@@ -31,7 +31,7 @@
 2. Search for **Update NPM Dependencies**.
 3. Click **Install**.
 
-Alternatively, you can install it from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/).
+Alternatively, you can install it from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=arka-bhattacharya.update-npm-dependencies).
 
 ## Commands
 
