@@ -1,15 +1,30 @@
 {
     "name": "update-npm-dependencies",
     "displayName": "Update NPM Dependencies",
-    "description": "",
+    "description": "A Visual Studio Code extension to update selected/all NPM dependencies.",
+    "icon": "assets/extension-icon.png",
     "version": "1.0.0",
     "engines": {
         "vscode": "^1.94.0"
     },
+    "homepage": "https://github.com/arka-bhat/update-npm-dependencies",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/arka-bhat/update-npm-dependencies"
+    },
     "categories": [
         "Other"
     ],
-    "activationEvents": [],
+    "keywords": [
+        "javascript",
+        "node",
+        "npm",
+        "update",
+        "dependency"
+    ],
+    "activationEvents": [
+        "workspaceContains:**/package.json"
+    ],
     "main": "./dist/extension.js",
     "contributes": {
         "commands": [

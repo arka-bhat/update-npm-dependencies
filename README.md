@@ -1,7 +1,5 @@
 # Update NPM Dependencies
 
-![Extension Icon](path-to-your-icon.png) <!-- Replace with your icon file path -->
-
 ## Overview
 
 **Update NPM Dependencies** is a Visual Studio Code extension designed to streamline the process of managing and updating dependencies in Node.js projects. It allows developers to easily check for outdated packages, select which to update, and automatically apply the changes—all from within VS Code.
@@ -46,7 +44,7 @@ Alternatively, you can install it from the [Visual Studio Marketplace](https://m
 
 ## Feedback and Contributions
 
-We welcome your feedback and contributions! If you encounter issues or have ideas for new features, please open an issue or submit a pull request on our [GitHub repository](https://github.com/your-repo-url).
+We welcome your feedback and contributions! If you encounter issues or have ideas for new features, please open an issue or submit a pull request on our [GitHub repository](https://github.com/arka-bhat/update-npm-dependencies).
 
 ## License
 
