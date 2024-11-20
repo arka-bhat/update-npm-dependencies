@@ -2,6 +2,7 @@
     "name": "update-npm-dependencies",
     "displayName": "Update NPM Dependencies",
     "description": "A Visual Studio Code extension to update selected/all NPM dependencies.",
+    "publisher": "arka-bhattacharya",
     "icon": "assets/extension-icon.png",
     "version": "1.0.0",
     "engines": {
