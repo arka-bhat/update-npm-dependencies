@@ -1,51 +1,61 @@
-# Update NPM Dependencies
+# Update Dependencies
 
 ## Overview
 
-**Update NPM Dependencies** is a Visual Studio Code extension designed to streamline the process of managing and updating dependencies in Node.js projects. It allows developers to easily check for outdated packages, select which to update, and automatically apply the changes—all from within VS Code.
+**Update Dependencies** is a Visual Studio Code extension for selectively upgrading packages in Node.js projects. It detects your package manager automatically, shows outdated packages grouped and color-coded by risk, and runs the install for you — all from the Command Palette.
 
 ## Features
 
--   **Check for Updates**: Scans your `package.json` file to identify dependencies with newer versions available on npm.
--   **Interactive Update Selection**: Displays a checkbox list of outdated dependencies, allowing you to select which to update.
--   **Automatic Updates**:
-    -   Updates the selected dependencies' versions in `package.json`.
-    -   Executes `npm update` to install the new versions.
--   **Progress Notifications**:
-    -   Real-time progress indicators for tasks such as checking dependencies and updating packages.
+- **Auto-detects your package manager** — supports npm, yarn, pnpm, and bun (lockfile-based detection with `packageManager` field fallback)
+- **mise support** — if your project uses [mise](https://mise.jdx.dev/) (`mise.toml`, `.mise.toml`, `.tool-versions`, `tool-versions`, or a `mise/` directory), commands are automatically prefixed with `mise exec --`
+- **Color-coded, grouped picker** — outdated packages are sorted by upgrade risk, separated into groups with a "Select all `patch`/`minor`/`major`" toggle at the top of each:
+    - Patch (green) — safe, bug fixes
+    - Minor (yellow) — new features, backwards-compatible
+    - Major (red) — breaking changes
+- **Live install output** — an "Update Dependencies" output panel shows the package manager's output in real time
+- **Selective updates** — pick exactly which packages to upgrade; `package.json` is updated and the install runs only for your selection
 
 ## How It Works
 
-1. Open a Node.js project in Visual Studio Code with a valid `package.json` file.
-2. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux) to open the Command Palette.
-3. Search for and select **Update NPM Dependencies**.
-4. The extension will:
-    - Check for outdated dependencies.
-    - Show a checkbox list of dependencies with available updates.
-5. Select the dependencies to update and click **Update**.
-6. The extension will update the `package.json` file and synchronize the changes by running `npm update`.
+1. Open a Node.js project in VS Code containing a `package.json`.
+2. Open the Command Palette (`Cmd+Shift+P` on Mac, `Ctrl+Shift+P` on Windows/Linux).
+3. Run **Update Dependencies**.
+4. The extension checks for outdated packages and shows a grouped, color-coded picker.
+5. Select the packages you want to upgrade and confirm.
+6. `package.json` is updated and your package manager installs the new versions.
 
-## Installation
+## Package Manager Detection
 
-1. Open the Extensions view in VS Code (`Ctrl+Shift+X` or `Cmd+Shift+X`).
-2. Search for **Update NPM Dependencies**.
-3. Click **Install**.
+The extension checks for lockfiles in this order:
 
-Alternatively, you can install it from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=arka-bhattacharya.update-npm-dependencies).
+| Lockfile                                 | Package manager |
+| ---------------------------------------- | --------------- |
+| `bun.lockb` / `bun.lock`                 | bun             |
+| `pnpm-lock.yaml`                         | pnpm            |
+| `yarn.lock`                              | yarn            |
+| `package-lock.json`                      | npm             |
+| `packageManager` field in `package.json` | as specified    |
+| _(none)_                                 | npm (default)   |
+
+## mise Support
+
+If any of `mise.toml`, `.mise.toml`, `.tool-versions`, `tool-versions`, or a `mise/` directory is present at the workspace root, all install commands are prefixed with `mise exec -- ` so the correct Node/Bun version is used.
+
+The `mise` binary is located by checking common install paths (`~/.local/bin/mise`, `/opt/homebrew/bin/mise`, `/usr/local/bin/mise`) before falling back to `which mise`, so this works correctly even when VS Code is launched outside of a terminal.
 
 ## Commands
 
--   **Update NPM Dependencies** (`update-npm-dependencies.updateDependencies`): Checks for updates and allows you to select and update outdated dependencies.
+**Update Dependencies** (`update-npm-dependencies.updateDependencies`)
 
 ## Requirements
 
--   A Node.js project with a `package.json` file.
--   `npm` must be installed and accessible in your system's PATH.
+- A workspace with a `package.json` file
+- Your package manager (`npm`, `yarn`, `pnpm`, or `bun`) accessible in your PATH
 
 ## Feedback and Contributions
 
-We welcome your feedback and contributions! If you encounter issues or have ideas for new features, please open an issue or submit a pull request on our [GitHub repository](https://github.com/arka-bhat/update-npm-dependencies).
+Issues and pull requests welcome on [GitHub](https://github.com/arka-bhat/update-npm-dependencies).
 
 ## License
 
-This extension is licensed under the [MIT License](LICENSE).
+[MIT](LICENSE)
