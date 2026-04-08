@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Install step simplified: writes target versions to `package.json` then runs `<pm> install` (previously ran `npm update <packages>`)
 - Switched from `child_process.exec` to `child_process.spawn` for streaming output
-- Extension and command renamed from "Update NPM Dependencies" to "Update Dependencies"
+- Extension and command renamed from "Update NPM Dependencies" to "Update Node/Bun Dependencies"
 - `package.json` is restored to its original content if the install fails, preventing a partially-updated state
 
 ## [1.0.0] - 2024-11-20

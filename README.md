@@ -1,8 +1,8 @@
-# Update Dependencies
+# Update Node/Bun Dependencies
 
 ## Overview
 
-**Update Dependencies** is a Visual Studio Code extension for selectively upgrading packages in Node.js projects. It detects your package manager automatically, shows outdated packages grouped and color-coded by risk, and runs the install for you — all from the Command Palette.
+**Update Node/Bun Dependencies** is a Visual Studio Code extension for selectively upgrading packages in Node.js and Bun projects. It detects your package manager automatically, shows outdated packages grouped and color-coded by risk, and runs the install for you — all from the Command Palette.
 
 ## Features
 
@@ -19,7 +19,7 @@
 
 1. Open a Node.js project in VS Code containing a `package.json`.
 2. Open the Command Palette (`Cmd+Shift+P` on Mac, `Ctrl+Shift+P` on Windows/Linux).
-3. Run **Update Dependencies**.
+3. Run **Update Node/Bun Dependencies**.
 4. The extension checks for outdated packages and shows a grouped, color-coded picker.
 5. Select the packages you want to upgrade and confirm.
 6. `package.json` is updated and your package manager installs the new versions.
@@ -45,7 +45,7 @@ The `mise` binary is located by checking common install paths (`~/.local/bin/mis
 
 ## Commands
 
-**Update Dependencies** (`update-npm-dependencies.updateDependencies`)
+**Update Node/Bun Dependencies** (`update-npm-dependencies.updateDependencies`)
 
 ## Requirements
 
