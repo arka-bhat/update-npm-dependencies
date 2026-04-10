@@ -6,7 +6,7 @@
 	"icon": "assets/extension-icon.png",
 	"version": "2.0.0",
 	"engines": {
-		"vscode": "^1.94.0"
+		"vscode": "^1.100.0"
 	},
 	"homepage": "https://github.com/arka-bhat/update-npm-dependencies",
 	"repository": {
@@ -54,7 +54,7 @@
 		"@types/mocha": "^10.0.10",
 		"@types/node": "25.x",
 		"@types/semver": "^7.7.1",
-		"@types/vscode": "^1.115.0",
+		"@types/vscode": "^1.100.0",
 		"@typescript-eslint/eslint-plugin": "^8.58.1",
 		"@typescript-eslint/parser": "^8.58.1",
 		"@vscode/test-cli": "^0.0.12",
