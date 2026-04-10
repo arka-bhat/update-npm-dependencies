@@ -1,48 +1,64 @@
-# Welcome to your VS Code Extension
+# Developer Quickstart
 
-## What's in the folder
+## Project structure
 
-* This folder contains all of the files necessary for your extension.
-* `package.json` - this is the manifest file in which you declare your extension and command.
-  * The sample plugin registers a command and defines its title and command name. With this information VS Code can show the command in the command palette. It doesn’t yet need to load the plugin.
-* `src/extension.ts` - this is the main file where you will provide the implementation of your command.
-  * The file exports one function, `activate`, which is called the very first time your extension is activated (in this case by executing the command). Inside the `activate` function we call `registerCommand`.
-  * We pass the function containing the implementation of the command as the second parameter to `registerCommand`.
+| Path                         | Purpose                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
+| `package.json`               | Extension manifest — commands, activation events, metadata                            |
+| `src/extension.ts`           | All extension logic (package manager detection, mise detection, picker, install)      |
+| `src/test/extension.test.ts` | Test suite                                                                            |
+| `webpack.config.js`          | Bundles `src/extension.ts` → `dist/extension.js`                                      |
+| `tsconfig.json`              | TypeScript config — targets ES2022, Node16 modules, includes `node` and `mocha` types |
 
 ## Setup
 
-* install the recommended extensions (amodio.tsl-problem-matcher, ms-vscode.extension-test-runner, and dbaeumer.vscode-eslint)
+1. Install dependencies: `npm install`
+2. Install recommended VS Code extensions when prompted (ESLint, TypeScript Problem Matcher, Extension Test Runner)
 
+## Run the extension locally
 
-## Get up and running straight away
+Press `F5` — this opens a new Extension Development Host window with the extension loaded.
 
-* Press `F5` to open a new window with your extension loaded.
-* Run your command from the command palette by pressing (`Ctrl+Shift+P` or `Cmd+Shift+P` on Mac) and typing `Hello World`.
-* Set breakpoints in your code inside `src/extension.ts` to debug your extension.
-* Find output from your extension in the debug console.
+In the host window, open a Node.js project and run **Update Dependencies** from the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 
-## Make changes
+## Build commands
 
-* You can relaunch the extension from the debug toolbar after changing code in `src/extension.ts`.
-* You can also reload (`Ctrl+R` or `Cmd+R` on Mac) the VS Code window with your extension to load your changes.
+```bash
+npm run compile     # single build
+npm run watch       # rebuild on save
+npm run package     # production build (minified, hidden source maps)
+npm run lint        # ESLint
+npm test            # compile + lint + run tests
+```
 
+If `npm` is not in your PATH (e.g. you use mise), prefix with `mise exec --`:
 
-## Explore the API
+```bash
+mise exec -- npm run compile
+```
 
-* You can open the full set of our API when you open the file `node_modules/@types/vscode/index.d.ts`.
+## Reload after changes
+
+After editing `src/extension.ts`, either:
+
+- Re-run `F5` (full relaunch), or
+- Reload the Extension Development Host window with `Ctrl+R` / `Cmd+R`
+
+## Debugging
+
+Set breakpoints in `src/extension.ts` and use the debug console in the host window. The "Update Dependencies" output channel (View > Output) shows live install output.
 
 ## Run tests
 
-* Install the [Extension Test Runner](https://marketplace.visualstudio.com/items?itemName=ms-vscode.extension-test-runner)
-* Run the "watch" task via the **Tasks: Run Task** command. Make sure this is running, or tests might not be discovered.
-* Open the Testing view from the activity bar and click the Run Test" button, or use the hotkey `Ctrl/Cmd + ; A`
-* See the output of the test result in the Test Results view.
-* Make changes to `src/test/extension.test.ts` or create new test files inside the `test` folder.
-  * The provided test runner will only consider files matching the name pattern `**.test.ts`.
-  * You can create folders inside the `test` folder to structure your tests any way you want.
+Open the Testing view in the activity bar and click **Run Tests**, or use `Ctrl/Cmd+; A`. Make sure the `watch` build task is running first so tests are discovered.
 
-## Go further
+Test files must match `**/*.test.ts`.
 
-* Reduce the extension size and improve the startup time by [bundling your extension](https://code.visualstudio.com/api/working-with-extensions/bundling-extension).
-* [Publish your extension](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) on the VS Code extension marketplace.
-* Automate builds by setting up [Continuous Integration](https://code.visualstudio.com/api/working-with-extensions/continuous-integration).
+## Publishing
+
+```bash
+npm run package          # build for release
+npx @vscode/vsce publish # publish to Marketplace
+```
+
+See the [VS Code publishing docs](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) for setup.
