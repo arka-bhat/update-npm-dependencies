@@ -38,13 +38,15 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - Known: corepack's `+sha512…` hash is dropped on update
 
 ## 4. Cooldown
-- [ ] Setting `cooldown` (e.g. `"7d"`, `"12h"`), off by default
-- [ ] Picker prompt shows when cooldown is on
-- Note: npm-check-updates also picks up an existing pnpm `minimumReleaseAge` / npm `min-release-age` / bun `npmMinimalAgeGate` automatically; confirm while building
+- [x] Setting `updateDependencies.cooldown` (e.g. `"7d"`, `"12h"`; plain number = days), off by default
+- [x] Picker prompt shows when cooldown is on
+- [x] Confirmed: when unset, ncu reads npm `min-release-age` (.npmrc), yarn `npmMinimalAgeGate` (.yarnrc.yml), pnpm `minimumReleaseAge` (pnpm-workspace.yaml). Bun has no equivalent
+- [x] Live check against npm: 36500-day cooldown → no update; none / 7d → update
 
 ## 5. Settings: target, ignore list, peer
-- [ ] Settings `target` (latest / minor / patch), `reject` (packages to ignore), `peer` (only peer-compatible versions)
-- [ ] Respect a project's `.ncurc.json` (the library ignores it when called from code; re-test on v23)
+- [x] Settings `updateDependencies.target` (latest / minor / patch), `.reject` (names, wildcards, /regex/), `.peer`
+- [x] Respect a project's `.ncurc.json` / JSON `.ncurc` (re-tested on v23: ncu only reads rc files from code in `deep` mode). Project rc wins per key
+- [x] Same options used for the check and the write, so the written version matches the one shown
 
 ## 6. Link button per row
 - [ ] Button opens `npmjs.com/package/<name>?activeTab=versions`

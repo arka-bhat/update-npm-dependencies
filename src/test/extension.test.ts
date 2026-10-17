@@ -10,6 +10,7 @@ import {
 	findUpdates,
 	getBumpType,
 	parseMiseOutdated,
+	readNcurc,
 } from "../deps";
 import { buildPickItems } from "../extension";
 
@@ -82,6 +83,30 @@ suite("findUpdates", () => {
 		const { dir, options } = fixture(PACKAGE_JSON.replace("pnpm@9.0.0", "pnpm@9.0.0+sha512.abc"));
 		const pnpm = (await findUpdates(dir, options)).find((u) => u.name === "pnpm");
 		assert.strictEqual(pnpm?.current, "9.0.0");
+	});
+});
+
+suite("options", () => {
+	test("the default settings don't filter anything", async () => {
+		const { dir, options } = fixture();
+		const updates = await findUpdates(dir, { ...options, target: "latest", reject: [], peer: false });
+		assert.strictEqual(updates.length, 3);
+	});
+
+	test("rejected packages are left out", async () => {
+		const { dir, options } = fixture();
+		const names = (await findUpdates(dir, { ...options, reject: ["semver"] })).map((u) => u.name);
+		assert.deepStrictEqual(names.sort(), ["ms", "pnpm"]);
+	});
+
+	test("a project .ncurc.json is read", () => {
+		const { dir } = fixture();
+		fs.writeFileSync(path.join(dir, ".ncurc.json"), '{ "reject": ["semver"], "cooldown": 3 }');
+		assert.deepStrictEqual(readNcurc(dir), { reject: ["semver"], cooldown: 3 });
+	});
+
+	test("no .ncurc means no extra options", () => {
+		assert.deepStrictEqual(readNcurc(fixture().dir), {});
 	});
 });
 

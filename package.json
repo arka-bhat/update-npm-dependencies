@@ -37,7 +37,47 @@
 				"command": "update-npm-dependencies.updateDependencies",
 				"title": "Update Node/Bun Dependencies"
 			}
-		]
+		],
+		"configuration": {
+			"title": "Update Node/Bun Dependencies",
+			"properties": {
+				"updateDependencies.cooldown": {
+					"type": "string",
+					"default": "",
+					"pattern": "^(\\d+[dhm]?)?$",
+					"patternErrorMessage": "Use a number of days, or a number followed by d, h or m (e.g. 7d, 12h, 30m).",
+					"markdownDescription": "Skip versions published more recently than this, e.g. `7d`, `12h` or `30m` (a plain number means days). Reduces the risk of installing a freshly published, compromised release. When empty, your package manager's own setting is used if present: npm `min-release-age`, yarn `npmMinimalAgeGate` or pnpm `minimumReleaseAge`."
+				},
+				"updateDependencies.target": {
+					"type": "string",
+					"default": "latest",
+					"enum": [
+						"latest",
+						"minor",
+						"patch"
+					],
+					"enumDescriptions": [
+						"Offer the latest version, including major updates.",
+						"Offer at most minor updates.",
+						"Offer patch updates only."
+					],
+					"description": "How far to look for newer versions."
+				},
+				"updateDependencies.reject": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"markdownDescription": "Packages never offered for update. Accepts names, wildcards such as `@types/*`, or `/regex/`."
+				},
+				"updateDependencies.peer": {
+					"type": "boolean",
+					"default": false,
+					"description": "Only offer versions compatible with the peer dependencies of your installed packages."
+				}
+			}
+		}
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run package",

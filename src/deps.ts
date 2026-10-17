@@ -107,6 +107,21 @@ export function getBumpType(currentVersion: string, newVersion: string): BumpTyp
 	return newMinor !== curMinor ? "minor" : "patch";
 }
 
+/**
+ * The project's npm-check-updates config. npm-check-updates only reads it itself when run
+ * from the command line, so the extension loads it.
+ */
+export function readNcurc(rootPath: string): RunOptions {
+	for (const name of [".ncurc.json", ".ncurc"]) {
+		try {
+			return JSON.parse(fs.readFileSync(path.join(rootPath, name), "utf-8"));
+		} catch {
+			// ponytail: JSON only; YAML and JS config files need ncu's own loader, which isn't exported
+		}
+	}
+	return {};
+}
+
 /** Checks the registry for newer versions of everything in `rootPath`'s package.json. */
 export async function findUpdates(rootPath: string, options: RunOptions = {}): Promise<Update[]> {
 	const packageFile = path.join(rootPath, "package.json");

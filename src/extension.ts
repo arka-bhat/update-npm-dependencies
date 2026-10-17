@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
+import type { RunOptions } from "npm-check-updates";
 import {
 	type BumpType,
 	type Update,
@@ -10,6 +11,7 @@ import {
 	detectPackageManager,
 	findMiseUpdates,
 	findUpdates,
+	readNcurc,
 } from "./deps";
 
 export type DepQuickPickItem = vscode.QuickPickItem & {
@@ -189,6 +191,20 @@ function runCommand(
 	});
 }
 
+/** npm-check-updates options from the extension's settings; a project `.ncurc.json` wins per key. */
+function ncuOptions(rootPath: string): RunOptions {
+	const config = vscode.workspace.getConfiguration("updateDependencies", vscode.Uri.file(rootPath));
+	const cooldown = config.get<string>("cooldown", "");
+	return {
+		target: config.get<"latest" | "minor" | "patch">("target", "latest"),
+		reject: config.get<string[]>("reject", []),
+		peer: config.get<boolean>("peer", false),
+		// Left unset when empty so ncu falls back to the package manager's own release-age setting
+		...(cooldown ? { cooldown: /^\d+$/.test(cooldown) ? Number(cooldown) : cooldown } : {}),
+		...readNcurc(rootPath),
+	};
+}
+
 /** Saves the files' current text; the returned function writes it back. */
 function snapshot(files: string[]): () => void {
 	const saved = files.map((file) => [file, fs.readFileSync(file, "utf-8")] as const);
@@ -211,6 +227,7 @@ async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
 	const pm = detectPackageManager(rootPath);
 	const misePath = await detectMise(rootPath);
 	const via = misePath ? " via mise" : "";
+	const options = ncuOptions(rootPath);
 
 	const updates = await vscode.window.withProgress(
 		{
@@ -220,7 +237,7 @@ async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
 		},
 		async () => {
 			const [packageUpdates, miseUpdates] = await Promise.all([
-				findUpdates(rootPath),
+				findUpdates(rootPath, options),
 				misePath
 					? findMiseUpdates(misePath, rootPath).catch((error: Error) => {
 							output.appendLine(`Could not check mise tools: ${error.message}`);
@@ -238,9 +255,10 @@ async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
 	}
 	vscode.window.showInformationMessage(`Found ${updates.length} outdated packages`);
 
+	const cooldown = options.cooldown ? ` · cooldown ${options.cooldown}` : "";
 	const selected = await showDependencyPicker(
 		buildPickItems(updates),
-		`Select dependencies to update (${pm}${via})`,
+		`Select dependencies to update (${pm}${via}${cooldown})`,
 	);
 	if (!selected) {
 		vscode.window.showInformationMessage("No dependencies selected for update.");
@@ -265,7 +283,7 @@ async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
 				output.clear();
 				output.show(true);
 				if (packageNames.length > 0) {
-					await applyUpdates(rootPath, packageNames);
+					await applyUpdates(rootPath, packageNames, options);
 				}
 				if (misePath) {
 					// Bump mise pins first so the install runs on the new tool versions
