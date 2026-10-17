@@ -25,12 +25,17 @@ const PACKAGE_JSON = `{
 }
 `;
 
-function fixture(packageJson = PACKAGE_JSON) {
+/** A temp project made of the given files (relative path → content) plus the offline registry. */
+function fixture(files: Record<string, string> = { "package.json": PACKAGE_JSON }) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "update-deps-"));
-	fs.writeFileSync(path.join(dir, "package.json"), packageJson);
+	for (const [file, content] of Object.entries(files)) {
+		fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+		fs.writeFileSync(path.join(dir, file), content);
+	}
 	fs.writeFileSync(path.join(dir, "registry.json"), JSON.stringify(REGISTRY));
 	const options = { registryType: "json" as const, registry: path.join(dir, "registry.json") };
-	return { dir, options, read: () => fs.readFileSync(path.join(dir, "package.json"), "utf-8") };
+	const read = (file = "package.json") => fs.readFileSync(path.join(dir, file), "utf-8");
+	return { dir, options, read };
 }
 
 suite("getBumpType", () => {
@@ -80,9 +85,58 @@ suite("findUpdates", () => {
 	});
 
 	test("reads the packageManager version past a corepack hash", async () => {
-		const { dir, options } = fixture(PACKAGE_JSON.replace("pnpm@9.0.0", "pnpm@9.0.0+sha512.abc"));
+		const { dir, options } = fixture({
+			"package.json": PACKAGE_JSON.replace("pnpm@9.0.0", "pnpm@9.0.0+sha512.abc"),
+		});
 		const pnpm = (await findUpdates(dir, options)).find((u) => u.name === "pnpm");
 		assert.strictEqual(pnpm?.current, "9.0.0");
+	});
+});
+
+suite("monorepo", () => {
+	const workspace = {
+		"package.json": `{
+	"name": "root",
+	"private": true,
+	"workspaces": ["packages/*"],
+	"packageManager": "pnpm@9.0.0",
+	"devDependencies": { "ms": "^1.0.0" }
+}
+`,
+		"packages/a/package.json": '{ "name": "a", "dependencies": { "semver": "^6.0.0", "ms": "^1.0.0" } }\n',
+		"packages/b/package.json": '{ "name": "b", "dependencies": { "semver": "^6.1.0" } }\n',
+	};
+
+	test("one row per dependency across workspace packages", async () => {
+		const { dir, options } = fixture(workspace);
+		const rows = (await findUpdates(dir, options)).map((u) => [u.name, `${u.current} → ${u.latest}`, u.where]);
+		assert.deepStrictEqual(rows, [
+			["ms", "^1.0.0 → ^2.1.3", "root, packages/a"],
+			["pnpm", "9.0.0 → 12.14.0", "packageManager"],
+			["semver", "^6.0.0, ^6.1.0 → ^7.8.5", "packages/a, packages/b"],
+		]);
+	});
+
+	test("applying a row updates every package that uses it", async () => {
+		const { dir, options, read } = fixture(workspace);
+		await applyUpdates(dir, ["semver"], options);
+		assert.match(read("packages/a/package.json"), /"semver": "\^7\.8\.5", "ms": "\^1\.0\.0"/);
+		assert.match(read("packages/b/package.json"), /"semver": "\^7\.8\.5"/);
+		assert.strictEqual(read(), workspace["package.json"]);
+	});
+
+	test("pnpm catalog entries are found and written", async () => {
+		const { dir, options, read } = fixture({
+			"package.json": '{ "name": "root", "private": true }\n',
+			"pnpm-workspace.yaml": "packages:\n  - packages/*\ncatalog:\n  ms: ^1.0.0\n",
+			// ncu only reads pnpm-workspace.yaml once it detects pnpm from the lockfile
+			"pnpm-lock.yaml": "",
+			"packages/a/package.json": '{ "name": "a", "dependencies": { "ms": "catalog:" } }\n',
+		});
+		const ms = (await findUpdates(dir, options)).find((u) => u.name === "ms");
+		assert.deepStrictEqual([ms?.current, ms?.latest, ms?.where], ["^1.0.0", "^2.1.3", "catalog"]);
+		await applyUpdates(dir, ["ms"], options);
+		assert.strictEqual(read("pnpm-workspace.yaml"), "packages:\n  - packages/*\ncatalog:\n  ms: ^2.1.3\n");
 	});
 });
 
@@ -127,10 +181,13 @@ suite("parseMiseOutdated", () => {
 			go: tool("1.22", null, `${root}/mise.toml`),
 			python: tool("3.12", "3.14", "/home/me/.config/mise/config.toml"),
 		});
-		assert.deepStrictEqual(parseMiseOutdated(json, root), [
-			{ name: "node", current: "20", latest: "26", bump: "major", toolchain: "mise", file: `${root}/mise.toml` },
-			{ name: "pnpm", current: "9.0.0", latest: "12.14.0", bump: "major", toolchain: "mise", file: `${root}/.tool-versions` },
-		]);
+		assert.deepStrictEqual(
+			parseMiseOutdated(json, root).map((u) => [u.name, `${u.current} → ${u.latest}`, u.bump, u.files, u.where]),
+			[
+				["node", "20 → 26", "major", [`${root}/mise.toml`], "mise.toml"],
+				["pnpm", "9.0.0 → 12.14.0", "major", [`${root}/.tool-versions`], ".tool-versions"],
+			],
+		);
 	});
 });
 
@@ -141,6 +198,7 @@ suite("buildPickItems", () => {
 		latest: "2.0.0",
 		bump,
 		toolchain,
+		files: [],
 	});
 
 	test("puts the toolchain first with no Select-all row, then bump groups", () => {

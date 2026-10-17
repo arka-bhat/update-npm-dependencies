@@ -42,10 +42,9 @@ const npmButton: vscode.QuickInputButton = {
 
 export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 	const row = (update: Update, groupKey?: BumpType): DepQuickPickItem => {
-		const where = update.file ? path.basename(update.file) : update.toolchain;
 		return {
 			label: update.name,
-			description: `${update.current} → ${update.latest} · ${update.bump}${where ? ` · ${where}` : ""}`,
+			description: `${update.current} → ${update.latest} · ${update.bump}${update.where ? ` · ${update.where}` : ""}`,
 			iconPath: update.toolchain ? new vscode.ThemeIcon("tools") : bumpIcon(update.bump),
 			// mise tools (node, python, …) aren't npm packages
 			buttons: update.toolchain === "mise" ? [] : [npmButton],
@@ -226,16 +225,31 @@ function snapshot(files: string[]): () => void {
 	return () => saved.forEach(([file, text]) => fs.writeFileSync(file, text, "utf-8"));
 }
 
-async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
-	const rootPath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-	if (!rootPath) {
+/**
+ * The workspace folder to update. With several folders that have a package.json, asks
+ * which one; resolves to undefined if there are none or the user cancels.
+ */
+async function pickProject(): Promise<string | undefined> {
+	const folders = (vscode.workspace.workspaceFolders ?? []).filter((folder) =>
+		fs.existsSync(path.join(folder.uri.fsPath, "package.json")),
+	);
+	if (folders.length === 0) {
 		vscode.window.showErrorMessage("Please open a workspace with a package.json file.");
-		return;
+		return undefined;
 	}
+	if (folders.length === 1) {
+		return folders[0].uri.fsPath;
+	}
+	const picked = await vscode.window.showQuickPick(
+		folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath })),
+		{ placeHolder: "Select a project to check" },
+	);
+	return picked?.description;
+}
 
-	const packageJsonPath = path.join(rootPath, "package.json");
-	if (!fs.existsSync(packageJsonPath)) {
-		vscode.window.showErrorMessage("No package.json found in the root of the workspace.");
+async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
+	const rootPath = await pickProject();
+	if (!rootPath) {
 		return;
 	}
 
@@ -285,7 +299,7 @@ async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
 	const miseTools = chosen.filter((u) => u.toolchain === "mise");
 
 	// Everything we may write, so a failed update or install can be undone
-	const restore = snapshot([packageJsonPath, ...new Set(miseTools.map((u) => u.file!))]);
+	const restore = snapshot([...new Set(chosen.flatMap((u) => u.files))]);
 
 	try {
 		await vscode.window.withProgress(

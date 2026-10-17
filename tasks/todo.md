@@ -54,9 +54,12 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - [ ] Manual (F5): click link → browser opens → picker still open with same checkboxes
 
 ## 7. Multi-root and monorepo
-- [ ] More than one workspace folder with `package.json` → choose folder first; skip when only one
-- [ ] Monorepo (`workspaces` field or `pnpm-workspace.yaml`) → one picker covering all packages, same dependency merged into one row listing its packages
-- [ ] Writes go to each affected `package.json`; one install at the root
+- [x] More than one workspace folder with `package.json` → choose folder first; skip when only one
+- [ ] Manual (F5): multi-root workspace shows the project picker
+- [x] Monorepo (`workspaces` field or `pnpm-workspace.yaml`) → one picker covering all packages, one row per dependency name listing its packages (`root, packages/a`); differing current ranges shown together, most severe bump wins
+- [x] Applying a row updates the dependency in every package that uses it, plus pnpm catalogs (`pnpm-workspace.yaml`, formatting kept); one install at the root
+- [x] Each update lists the files it changes, so rollback restores exactly those (package files, catalog, mise config)
+- Known: ncu only reads `pnpm-workspace.yaml` when it detects pnpm (from `pnpm-lock.yaml`); yarn/bun catalogs not covered
 
 ## 8. Check after updating
 - [ ] After a successful install, if a `test` script exists: offer [Run test] [Skip]

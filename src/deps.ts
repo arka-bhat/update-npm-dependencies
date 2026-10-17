@@ -9,14 +9,19 @@ export type BumpType = "major" | "minor" | "patch";
 
 export type Update = {
 	name: string;
+	/** Current version range; several when workspace packages disagree, e.g. "^6.0.0, ^6.1.0" */
 	current: string;
 	latest: string;
 	bump: BumpType;
 	/** Set for package manager / runtime versions rather than dependencies */
 	toolchain?: "packageManager" | "mise";
-	/** Config file holding a mise pin */
-	file?: string;
+	/** Every file that changes when this update is applied */
+	files: string[];
+	/** Where the version lives, for the picker: "packageManager", "mise.toml", "apps/web, root" */
+	where?: string;
 };
+
+const BUMP_ORDER: BumpType[] = ["patch", "minor", "major"];
 
 export function detectPackageManager(rootPath: string): PackageManager {
 	if (
@@ -122,35 +127,122 @@ export function readNcurc(rootPath: string): RunOptions {
 	return {};
 }
 
-/** Checks the registry for newer versions of everything in `rootPath`'s package.json. */
-export async function findUpdates(rootPath: string, options: RunOptions = {}): Promise<Update[]> {
-	const packageFile = path.join(rootPath, "package.json");
-	const upgraded = (await run({
-		...options,
-		cwd: rootPath,
-		packageFile,
-		jsonUpgraded: true,
-	})) as Record<string, string>;
+/** A monorepo is checked and updated as a whole: every workspace package plus pnpm catalogs. */
+export function isMonorepo(rootPath: string): boolean {
+	if (fs.existsSync(path.join(rootPath, "pnpm-workspace.yaml"))) {
+		return true;
+	}
+	try {
+		return !!JSON.parse(fs.readFileSync(path.join(rootPath, "package.json"), "utf-8")).workspaces;
+	} catch {
+		return false;
+	}
+}
 
-	const pkg = JSON.parse(fs.readFileSync(packageFile, "utf-8"));
-	const current: Record<string, string> = {
+/** Which files npm-check-updates should read and write for this project. */
+function scope(rootPath: string): RunOptions {
+	return isMonorepo(rootPath)
+		? { cwd: rootPath, workspaces: true }
+		: { cwd: rootPath, packageFile: path.join(rootPath, "package.json") };
+}
+
+type Current = { version: string; packageManager?: boolean };
+
+/** Looks up a dependency's current version in a package.json or a pnpm-workspace.yaml catalog. */
+function currentVersions(file: string): (name: string) => Current | undefined {
+	const text = fs.readFileSync(file, "utf-8");
+	if (!file.endsWith(".json")) {
+		// ponytail: line match instead of a YAML parser; catalog entries are one `name: range` per line
+		return (name) => {
+			const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			const match = text.match(new RegExp(`^\\s+['"]?${escaped}['"]?:\\s*['"]?([^'"\\s#]+)`, "m"));
+			return match ? { version: match[1] } : undefined;
+		};
+	}
+	const pkg = JSON.parse(text);
+	const deps: Record<string, string> = {
 		...pkg.optionalDependencies,
 		...pkg.devDependencies,
 		...pkg.dependencies,
 	};
 	// "pnpm@9.0.0+sha512.abc" → ["pnpm", "9.0.0"]; ncu reports it under the bare name
 	const [pmName, pmVersion] = String(pkg.packageManager ?? "").split("+")[0].split("@");
-	return Object.entries(upgraded).map(([name, latest]): Update => {
-		const isPackageManager = name === pmName && !(name in current);
-		const from = isPackageManager ? pmVersion : (current[name] ?? "?");
-		return {
-			name,
-			current: from,
-			latest,
-			bump: getBumpType(from, latest),
-			toolchain: isPackageManager ? "packageManager" : undefined,
-		};
-	});
+	return (name) =>
+		name in deps
+			? { version: deps[name] }
+			: name === pmName
+				? { version: pmVersion, packageManager: true }
+				: undefined;
+}
+
+/**
+ * Checks the registry for newer versions of the project's dependencies (every workspace
+ * package in a monorepo). A dependency used in several packages becomes one update that
+ * covers all of them.
+ */
+export async function findUpdates(rootPath: string, options: RunOptions = {}): Promise<Update[]> {
+	const monorepo = isMonorepo(rootPath);
+	const result = await run({ ...options, ...scope(rootPath), jsonUpgraded: true });
+	// In workspace mode ncu keys results by file, relative to the root
+	const byFile = (monorepo ? result : { "package.json": result }) as Record<
+		string,
+		Record<string, string>
+	>;
+
+	const updates = new Map<string, Update>();
+	for (const [relativeFile, upgraded] of Object.entries(byFile)) {
+		const file = path.join(rootPath, relativeFile);
+		const lookup = currentVersions(file);
+		for (const [name, latest] of Object.entries(upgraded)) {
+			const found = lookup(name);
+			const current = found?.version ?? "?";
+			const bump = getBumpType(current, latest);
+			const existing = updates.get(name);
+			if (!existing) {
+				updates.set(name, {
+					name,
+					current,
+					latest,
+					bump,
+					toolchain: found?.packageManager ? "packageManager" : undefined,
+					files: [file],
+				});
+				continue;
+			}
+			existing.files.push(file);
+			if (!existing.current.split(", ").includes(current)) {
+				existing.current += `, ${current}`;
+			}
+			if (BUMP_ORDER.indexOf(bump) > BUMP_ORDER.indexOf(existing.bump)) {
+				existing.bump = bump;
+			}
+		}
+	}
+
+	const label = (file: string) =>
+		file.endsWith(".yaml") ? "catalog" : path.relative(rootPath, path.dirname(file)) || "root";
+	for (const update of updates.values()) {
+		update.where = update.toolchain
+			? "packageManager"
+			: monorepo
+				? update.files.map(label).join(", ")
+				: undefined;
+	}
+	return [...updates.values()];
+}
+
+/**
+ * Writes the selected updates. npm-check-updates only replaces the version strings, so
+ * indentation and layout are kept, and it covers every section and file it checks
+ * (optionalDependencies, the packageManager field, workspace packages, pnpm catalogs).
+ */
+export async function applyUpdates(
+	rootPath: string,
+	names: string[],
+	options: RunOptions = {},
+): Promise<void> {
+	// ponytail: re-resolves the selected names; a release landing between check and apply gets picked up
+	await run({ ...options, ...scope(rootPath), upgrade: true, filter: names, install: "never" });
 }
 
 type MiseOutdated = Record<
@@ -176,7 +268,8 @@ export function parseMiseOutdated(json: string, rootPath: string): Update[] {
 			latest: tool.bump!,
 			bump: getBumpType(tool.requested, tool.bump!),
 			toolchain: "mise",
-			file: tool.source!.path,
+			files: [tool.source!.path!],
+			where: path.basename(tool.source!.path!),
 		}));
 }
 
@@ -187,25 +280,4 @@ export async function findMiseUpdates(misePath: string, rootPath: string): Promi
 	});
 	// mise reports real paths (e.g. /private/tmp on macOS), so compare against the real root
 	return parseMiseOutdated(stdout, fs.realpathSync(rootPath));
-}
-
-/**
- * Writes the selected updates into package.json. npm-check-updates only replaces the
- * version strings, so indentation and layout are kept, and it covers every section it
- * checks (including optionalDependencies and the packageManager field).
- */
-export async function applyUpdates(
-	rootPath: string,
-	names: string[],
-	options: RunOptions = {},
-): Promise<void> {
-	// ponytail: re-resolves the selected names; a release landing between check and apply gets picked up
-	await run({
-		...options,
-		cwd: rootPath,
-		packageFile: path.join(rootPath, "package.json"),
-		upgrade: true,
-		filter: names,
-		install: "never",
-	});
 }
