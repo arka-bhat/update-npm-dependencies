@@ -74,7 +74,8 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - [ ] Manual (F5): status bar count appears; hints show in package.json; saving package.json refreshes them
 
 ## 10. Docs and release
-- [ ] README, CHANGELOG, version bump
+- [x] README (features, settings table, mise toolchain), CHANGELOG 2.1.0 (dated "Unreleased"; set the date when publishing), version → 2.1.0
+- [x] CHANGELOG 2.0.0 date corrected to 2026-04-10 (Marketplace publish date, matches the `2.0.0` tag)
 
 ---
 
