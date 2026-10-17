@@ -80,21 +80,26 @@ export async function detectMise(rootPath: string): Promise<string | false> {
 	});
 }
 
+/**
+ * Classifies an update the way a caret range does: anything `^current` wouldn't accept is
+ * major, so below 1.0 a minor bump (0.3 → 0.4) and below 0.1 a patch bump (0.0.3 → 0.0.4)
+ * count as breaking.
+ */
 export function getBumpType(currentVersion: string, newVersion: string): BumpType {
-	const clean = (v: string) => v.replace(/^[^0-9]*/, "");
 	const parts = (v: string) =>
-		clean(v)
+		v
+			.replace(/^[^0-9]*/, "")
 			.split(".")
 			.map((n) => parseInt(n, 10) || 0);
-	const [curMajor, curMinor] = parts(currentVersion);
-	const [newMajor, newMinor] = parts(newVersion);
-	if (newMajor > curMajor) {
+	const [curMajor = 0, curMinor = 0, curPatch = 0] = parts(currentVersion);
+	const [newMajor = 0, newMinor = 0, newPatch = 0] = parts(newVersion);
+	if (
+		newMajor !== curMajor ||
+		(curMajor === 0 && (newMinor !== curMinor || (curMinor === 0 && newPatch !== curPatch)))
+	) {
 		return "major";
 	}
-	if (newMinor > curMinor) {
-		return "minor";
-	}
-	return "patch";
+	return newMinor !== curMinor ? "minor" : "patch";
 }
 
 /** Checks the registry for newer versions of everything in `rootPath`'s package.json. */

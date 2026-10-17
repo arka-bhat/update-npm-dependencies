@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { applyUpdates, findUpdates } from "../deps";
+import { type BumpType, applyUpdates, findUpdates, getBumpType } from "../deps";
 
 // Offline registry: npm-check-updates reads latest versions from this file instead of npm
 const REGISTRY = { semver: "7.8.5", ms: "2.1.3", pnpm: "12.14.0" };
@@ -23,6 +23,25 @@ function fixture(packageJson = PACKAGE_JSON) {
 	const options = { registryType: "json" as const, registry: path.join(dir, "registry.json") };
 	return { dir, options, read: () => fs.readFileSync(path.join(dir, "package.json"), "utf-8") };
 }
+
+suite("getBumpType", () => {
+	const cases: [string, string, BumpType][] = [
+		["^1.2.3", "^1.2.4", "patch"],
+		["^1.2.3", "^1.3.0", "minor"],
+		["^1.2.3", "^2.0.0", "major"],
+		["^0.3.1", "^0.3.2", "patch"],
+		["^0.3.1", "^0.4.0", "major"],
+		["^0.0.3", "^0.0.4", "major"],
+		["~6.0.2", "~6.0.3", "patch"],
+		["25.x", "26.x", "major"],
+		["?", "12.14.0", "major"],
+	];
+	for (const [from, to, expected] of cases) {
+		test(`${from} → ${to} is ${expected}`, () => {
+			assert.strictEqual(getBumpType(from, to), expected);
+		});
+	}
+});
 
 suite("applyUpdates", () => {
 	test("keeps formatting and writes packageManager and optionalDependencies", async () => {

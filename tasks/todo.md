@@ -27,8 +27,8 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - Logic not tied to VS Code moved to `src/deps.ts`
 
 ## 2. 0.x version classification + real tests
-- [ ] Classify by caret-range rules: an update outside `^current` is major (`0.3 → 0.4` and `0.0.3 → 0.0.4` are major)
-- [ ] Replace the sample test with tests for classification and grouping
+- [x] Classify by caret-range rules: an update outside `^current` is major (`0.3 → 0.4` and `0.0.3 → 0.0.4` are major)
+- [x] Replace the sample test with tests for classification (grouping tests come with step 3, where grouping logic changes)
 
 ## 3. Toolchain group
 - [ ] `packageManager` update shown in its own "Toolchain" group at the top, not covered by the Select-all toggles
