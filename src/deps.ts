@@ -152,6 +152,34 @@ const RC_OPTIONS = [
 	"target",
 ];
 
+export type Project = { name: string; root: string };
+
+/**
+ * The projects in a set of workspace folders: each folder with a package.json, or, for a
+ * folder without one (e.g. a folder holding several repos), each direct subfolder that has one.
+ */
+export function findProjects(folders: Project[]): Project[] {
+	return folders.flatMap((folder) => {
+		if (fs.existsSync(path.join(folder.root, "package.json"))) {
+			return [folder];
+		}
+		try {
+			// ponytail: one level deep; deeper layouts can open the project folder itself
+			return fs
+				.readdirSync(folder.root, { withFileTypes: true })
+				.filter(
+					(entry) =>
+						entry.isDirectory() &&
+						entry.name !== "node_modules" &&
+						fs.existsSync(path.join(folder.root, entry.name, "package.json")),
+				)
+				.map((entry) => ({ name: entry.name, root: path.join(folder.root, entry.name) }));
+		} catch {
+			return []; // unreadable or not on disk (e.g. a virtual workspace folder)
+		}
+	});
+}
+
 /** A monorepo is checked and updated as a whole: every workspace package plus pnpm catalogs. */
 export function isMonorepo(rootPath: string): boolean {
 	const pnpmWorkspace = path.join(rootPath, "pnpm-workspace.yaml");

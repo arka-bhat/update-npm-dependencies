@@ -8,8 +8,10 @@ import {
 	type Update,
 	applyUpdates,
 	detectMise,
+	type Project,
 	detectPackageManager,
 	findMiseUpdates,
+	findProjects,
 	findUpdates,
 	lockfiles,
 	readNcurc,
@@ -227,28 +229,33 @@ function ncuOptions(rootPath: string): RunOptions {
 	};
 }
 
-/** Workspace folders that have a package.json at their root. */
-function projectFolders(): readonly vscode.WorkspaceFolder[] {
-	return (vscode.workspace.workspaceFolders ?? []).filter((folder) =>
-		fs.existsSync(path.join(folder.uri.fsPath, "package.json")),
+/** Projects in the open workspace folders (see findProjects). */
+function workspaceProjects(): Project[] {
+	return findProjects(
+		(vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+			name: folder.name,
+			root: folder.uri.fsPath,
+		})),
 	);
 }
 
 /**
- * The workspace folder to update. With several folders that have a package.json, asks
- * which one; resolves to undefined if there are none or the user cancels.
+ * The project to update. With several, asks which one; resolves to undefined if there are
+ * none or the user cancels.
  */
 async function pickProject(): Promise<string | undefined> {
-	const folders = projectFolders();
-	if (folders.length === 0) {
-		vscode.window.showErrorMessage("Please open a workspace with a package.json file.");
+	const projects = workspaceProjects();
+	if (projects.length === 0) {
+		vscode.window.showErrorMessage(
+			"No package.json found in the workspace folders or the folders directly inside them.",
+		);
 		return undefined;
 	}
-	if (folders.length === 1) {
-		return folders[0].uri.fsPath;
+	if (projects.length === 1) {
+		return projects[0].root;
 	}
 	const picked = await vscode.window.showQuickPick(
-		folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath })),
+		projects.map((project) => ({ label: project.name, description: project.root })),
 		{ placeHolder: "Select a project to check" },
 	);
 	return picked?.description;
@@ -445,7 +452,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const refresh = startOutdatedIndicator(
 		context,
 		outputChannel,
-		() => projectFolders().map((folder) => folder.uri.fsPath),
+		() => workspaceProjects().map((project) => project.root),
 		ncuOptions,
 	);
 

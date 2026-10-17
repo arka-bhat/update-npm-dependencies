@@ -7,6 +7,7 @@ import {
 	type BumpType,
 	type Update,
 	applyUpdates,
+	findProjects,
 	findUpdates,
 	getBumpType,
 	lockfiles,
@@ -93,6 +94,29 @@ suite("findUpdates", () => {
 		});
 		const pnpm = (await findUpdates(dir, options)).find((u) => u.name === "pnpm");
 		assert.strictEqual(pnpm?.current, "9.0.0");
+	});
+});
+
+suite("findProjects", () => {
+	test("a folder with a package.json is one project", () => {
+		const { dir } = fixture();
+		assert.deepStrictEqual(findProjects([{ name: "app", root: dir }]), [{ name: "app", root: dir }]);
+	});
+
+	test("a folder of repos yields each subfolder that has a package.json", () => {
+		const { dir } = fixture({
+			"api/package.json": "{}",
+			"mobile/package.json": "{}",
+			"docs/README.md": "",
+			"node_modules/x/package.json": "{}",
+		});
+		assert.deepStrictEqual(
+			findProjects([{ name: "fitflow", root: dir }]).map((p) => [p.name, p.root]),
+			[
+				["api", path.join(dir, "api")],
+				["mobile", path.join(dir, "mobile")],
+			],
+		);
 	});
 });
 
