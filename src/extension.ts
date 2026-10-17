@@ -15,6 +15,7 @@ import {
 	readNcurc,
 	snapshot,
 } from "./deps";
+import { startOutdatedIndicator } from "./status";
 
 export type DepQuickPickItem = vscode.QuickPickItem & {
 	update?: Update;
@@ -221,14 +222,19 @@ function ncuOptions(rootPath: string): RunOptions {
 	};
 }
 
+/** Workspace folders that have a package.json at their root. */
+function projectFolders(): readonly vscode.WorkspaceFolder[] {
+	return (vscode.workspace.workspaceFolders ?? []).filter((folder) =>
+		fs.existsSync(path.join(folder.uri.fsPath, "package.json")),
+	);
+}
+
 /**
  * The workspace folder to update. With several folders that have a package.json, asks
  * which one; resolves to undefined if there are none or the user cancels.
  */
 async function pickProject(): Promise<string | undefined> {
-	const folders = (vscode.workspace.workspaceFolders ?? []).filter((folder) =>
-		fs.existsSync(path.join(folder.uri.fsPath, "package.json")),
-	);
+	const folders = projectFolders();
 	if (folders.length === 0) {
 		vscode.window.showErrorMessage("Please open a workspace with a package.json file.");
 		return undefined;
@@ -243,7 +249,10 @@ async function pickProject(): Promise<string | undefined> {
 	return picked?.description;
 }
 
-async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
+async function updateDependencies(
+	output: vscode.OutputChannel,
+	refresh: (rootPath: string) => Promise<void>,
+): Promise<void> {
 	const rootPath = await pickProject();
 	if (!rootPath) {
 		return;
@@ -327,6 +336,7 @@ async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
 		);
 		return;
 	}
+	void refresh(rootPath);
 
 	const updated = `Dependencies updated successfully (${pm}${via}).`;
 	if (!hasTestScript(rootPath)) {
@@ -355,6 +365,7 @@ async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
 			restore();
 			await progress("Reverting...", () => packageManager("install"));
 			vscode.window.showInformationMessage("Update reverted.");
+			void refresh(rootPath);
 		}
 	}
 }
@@ -370,9 +381,16 @@ export function activate(context: vscode.ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel("Update Dependencies");
 	context.subscriptions.push(outputChannel);
 
+	const refresh = startOutdatedIndicator(
+		context,
+		outputChannel,
+		() => projectFolders().map((folder) => folder.uri.fsPath),
+		ncuOptions,
+	);
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand("update-npm-dependencies.updateDependencies", () =>
-			updateDependencies(outputChannel).catch((error: Error) => {
+			updateDependencies(outputChannel, refresh).catch((error: Error) => {
 				vscode.window.showErrorMessage("Error: " + error.message);
 			}),
 		),

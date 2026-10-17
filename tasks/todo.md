@@ -68,9 +68,10 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - [ ] Manual (F5): project with a failing test script → Revert restores files and reinstalls
 
 ## 9. Status bar + inline hints
-- [ ] Status bar "N outdated" (click opens the picker); refreshed on activation and on `package.json` save, results cached
-- [ ] Faded inline text after outdated lines in `package.json`: `→ ^10.13.0 · minor`
-- [ ] Setting to turn off background checks (they hit the network)
+- [x] Status bar "N outdated" (click opens the picker); refreshed on activation, on `package.json` / `pnpm-workspace.yaml` save, on settings change, and after updating or reverting
+- [x] Faded inline text after outdated lines in `package.json` files and pnpm catalogs: `→ ^10.13.0 · minor` (new `src/status.ts`; line matching tested)
+- [x] Setting `updateDependencies.backgroundCheck` (default on) to turn off background checks (they hit the network). Background checks cover npm packages and `packageManager`, not mise tools
+- [ ] Manual (F5): status bar count appears; hints show in package.json; saving package.json refreshes them
 
 ## 10. Docs and release
 - [ ] README, CHANGELOG, version bump

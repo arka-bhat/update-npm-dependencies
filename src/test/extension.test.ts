@@ -15,6 +15,7 @@ import {
 	snapshot,
 } from "../deps";
 import { buildPickItems } from "../extension";
+import { hintsFor } from "../status";
 
 // Offline registry: npm-check-updates reads latest versions from this file instead of npm
 const REGISTRY = { semver: "7.8.5", ms: "2.1.3", pnpm: "12.14.0" };
@@ -238,6 +239,45 @@ suite("buildPickItems", () => {
 		const buttons = (name: string) => items.find((i) => i.label === name)?.buttons?.length;
 		assert.strictEqual(buttons("react"), 1);
 		assert.strictEqual(buttons("node"), 0);
+	});
+});
+
+suite("hintsFor", () => {
+	const file = "/work/app/package.json";
+	const update = (name: string, toolchain?: Update["toolchain"], files = [file]): Update => ({
+		name,
+		current: "^1.0.0",
+		latest: "^2.0.0",
+		bump: "major",
+		toolchain,
+		files,
+	});
+
+	test("puts each hint on its dependency's line, packageManager included", () => {
+		const text = [
+			"{", // 0
+			'\t"packageManager": "pnpm@9.0.0",', // 1
+			'\t"dependencies": {', // 2
+			'\t\t"@types/ms": "^1.0.0",', // 3
+			'\t\t"ms": "^1.0.0"', // 4
+			"\t}",
+			"}",
+		].join("\n");
+		const hints = hintsFor(file, text, [
+			update("ms"),
+			update("pnpm", "packageManager"),
+			update("semver", undefined, ["/work/app/packages/a/package.json"]),
+		]);
+		assert.deepStrictEqual(hints, [
+			{ line: 4, text: "→ ^2.0.0 · major" },
+			{ line: 1, text: "→ ^2.0.0 · major" },
+		]);
+	});
+
+	test("finds bare keys in a pnpm catalog", () => {
+		const yaml = "/work/app/pnpm-workspace.yaml";
+		const hints = hintsFor(yaml, "catalog:\n  ms: ^1.0.0\n", [update("ms", undefined, [yaml])]);
+		assert.deepStrictEqual(hints, [{ line: 1, text: "→ ^2.0.0 · major" }]);
 	});
 });
 

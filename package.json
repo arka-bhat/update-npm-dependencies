@@ -75,6 +75,11 @@
 					"type": "boolean",
 					"default": false,
 					"description": "Only offer versions compatible with the peer dependencies of your installed packages."
+				},
+				"updateDependencies.backgroundCheck": {
+					"type": "boolean",
+					"default": true,
+					"description": "Check for outdated dependencies on startup and whenever package.json is saved, and show the count in the status bar and hints next to outdated lines in package.json. Contacts the npm registry."
 				}
 			}
 		}
