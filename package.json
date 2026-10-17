@@ -6,7 +6,7 @@
 	"icon": "assets/extension-icon.png",
 	"version": "2.0.0",
 	"engines": {
-		"vscode": "^1.100.0"
+		"vscode": "^1.123.0"
 	},
 	"homepage": "https://github.com/arka-bhat/update-npm-dependencies",
 	"repository": {
@@ -52,20 +52,24 @@
 	},
 	"devDependencies": {
 		"@types/mocha": "^10.0.10",
-		"@types/node": "25.x",
-		"@types/semver": "^7.7.1",
-		"@types/vscode": "^1.100.0",
-		"@typescript-eslint/eslint-plugin": "^8.58.1",
-		"@typescript-eslint/parser": "^8.58.1",
-		"@vscode/test-cli": "^0.0.12",
-		"@vscode/test-electron": "^2.5.2",
-		"eslint": "^10.2.0",
-		"ts-loader": "^9.5.7",
-		"typescript": "^6.0.2",
-		"webpack": "^5.106.0",
-		"webpack-cli": "^7.0.2"
+		"@types/node": "26.x",
+		"@types/vscode": "^1.123.0",
+		"@typescript-eslint/eslint-plugin": "^8.71.2",
+		"@typescript-eslint/parser": "^8.71.2",
+		"@vscode/test-cli": "^0.0.15",
+		"@vscode/test-electron": "^3.1.0",
+		"eslint": "^10.13.0",
+		"ts-loader": "^9.6.2",
+		"typescript": "~6.0.3",
+		"webpack": "^5.112.0",
+		"webpack-cli": "^7.2.3"
 	},
 	"dependencies": {
-		"npm-check-updates": "^20.0.0"
+		"npm-check-updates": "^23.1.1"
+	},
+	"overrides": {
+		"@vscode/test-cli": {
+			"mocha": "^12.0.3"
+		}
 	}
 }
