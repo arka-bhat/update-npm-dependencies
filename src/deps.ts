@@ -245,6 +245,19 @@ export async function applyUpdates(
 	await run({ ...options, ...scope(rootPath), upgrade: true, filter: names, install: "never" });
 }
 
+/** Saves the files' current bytes (lockfiles like bun.lockb are binary); the returned function writes them back. */
+export function snapshot(files: string[]): () => void {
+	const saved = files.map((file) => [file, fs.readFileSync(file)] as const);
+	return () => saved.forEach(([file, data]) => fs.writeFileSync(file, data));
+}
+
+/** The project's existing lockfiles. */
+export function lockfiles(rootPath: string): string[] {
+	return ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb"]
+		.map((name) => path.join(rootPath, name))
+		.filter((file) => fs.existsSync(file));
+}
+
 type MiseOutdated = Record<
 	string,
 	{ requested: string; bump: string | null; source?: { path?: string } }

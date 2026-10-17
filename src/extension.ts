@@ -11,7 +11,9 @@ import {
 	detectPackageManager,
 	findMiseUpdates,
 	findUpdates,
+	lockfiles,
 	readNcurc,
+	snapshot,
 } from "./deps";
 
 export type DepQuickPickItem = vscode.QuickPickItem & {
@@ -219,12 +221,6 @@ function ncuOptions(rootPath: string): RunOptions {
 	};
 }
 
-/** Saves the files' current text; the returned function writes it back. */
-function snapshot(files: string[]): () => void {
-	const saved = files.map((file) => [file, fs.readFileSync(file, "utf-8")] as const);
-	return () => saved.forEach(([file, text]) => fs.writeFileSync(file, text, "utf-8"));
-}
-
 /**
  * The workspace folder to update. With several folders that have a package.json, asks
  * which one; resolves to undefined if there are none or the user cancels.
@@ -298,41 +294,76 @@ async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
 	const packageNames = chosen.filter((u) => u.toolchain !== "mise").map((u) => u.name);
 	const miseTools = chosen.filter((u) => u.toolchain === "mise");
 
-	// Everything we may write, so a failed update or install can be undone
-	const restore = snapshot([...new Set(chosen.flatMap((u) => u.files))]);
+	// Everything the update may change, so a failed update, install or test run can be undone
+	const restore = snapshot([...new Set(chosen.flatMap((u) => u.files)), ...lockfiles(rootPath)]);
+	const packageManager = (...args: string[]) =>
+		misePath
+			? runCommand(output, misePath, ["exec", "--", pm, ...args], rootPath)
+			: runCommand(output, pm, args, rootPath);
+	const progress = (title: string, task: () => Promise<void>) =>
+		vscode.window.withProgress(
+			{ location: vscode.ProgressLocation.Notification, title, cancellable: false },
+			task,
+		);
 
 	try {
-		await vscode.window.withProgress(
-			{
-				location: vscode.ProgressLocation.Notification,
-				title: `Updating with ${pm}${misePath ? " (mise)" : ""}...`,
-				cancellable: false,
-			},
-			async () => {
-				output.clear();
-				output.show(true);
-				if (packageNames.length > 0) {
-					await applyUpdates(rootPath, packageNames, options);
-				}
-				if (misePath) {
-					// Bump mise pins first so the install runs on the new tool versions
-					if (miseTools.length > 0) {
-						const tools = miseTools.map((u) => u.name);
-						await runCommand(output, misePath, ["upgrade", "--bump", ...tools], rootPath);
-					}
-					await runCommand(output, misePath, ["exec", "--", pm, "install"], rootPath);
-				} else {
-					await runCommand(output, pm, ["install"], rootPath);
-				}
-			},
-		);
-		vscode.window.showInformationMessage(`Dependencies updated successfully (${pm}${via}).`);
+		await progress(`Updating with ${pm}${misePath ? " (mise)" : ""}...`, async () => {
+			output.clear();
+			output.show(true);
+			if (packageNames.length > 0) {
+				await applyUpdates(rootPath, packageNames, options);
+			}
+			if (misePath && miseTools.length > 0) {
+				// Bump mise pins first so the install runs on the new tool versions
+				const tools = miseTools.map((u) => u.name);
+				await runCommand(output, misePath, ["upgrade", "--bump", ...tools], rootPath);
+			}
+			await packageManager("install");
+		});
 	} catch (error: any) {
 		restore();
 		vscode.window.showErrorMessage(
 			`Update failed: ${error.message}. Your files have been restored. See the "Update Dependencies" output panel for details.`,
 		);
+		return;
 	}
+
+	const updated = `Dependencies updated successfully (${pm}${via}).`;
+	if (!hasTestScript(rootPath)) {
+		vscode.window.showInformationMessage(updated);
+		return;
+	}
+	const choice = await vscode.window.showInformationMessage(
+		`${updated} Run the test script to check them?`,
+		"Run test",
+		"Skip",
+	);
+	if (choice !== "Run test") {
+		return;
+	}
+	try {
+		// `run test`, not `test`: `bun test` would start Bun's own runner instead of the script
+		await progress("Running tests...", () => packageManager("run", "test"));
+		vscode.window.showInformationMessage("Tests passed with the updated dependencies.");
+	} catch {
+		const revert = await vscode.window.showWarningMessage(
+			"Tests failed after the update. Revert it? See the \"Update Dependencies\" output panel for the test output.",
+			"Revert",
+			"Keep",
+		);
+		if (revert === "Revert") {
+			restore();
+			await progress("Reverting...", () => packageManager("install"));
+			vscode.window.showInformationMessage("Update reverted.");
+		}
+	}
+}
+
+/** True when package.json has a real test script (not npm's "no test specified" placeholder). */
+function hasTestScript(rootPath: string): boolean {
+	const test = JSON.parse(fs.readFileSync(path.join(rootPath, "package.json"), "utf-8")).scripts
+		?.test;
+	return typeof test === "string" && !test.includes("no test specified");
 }
 
 export function activate(context: vscode.ExtensionContext) {

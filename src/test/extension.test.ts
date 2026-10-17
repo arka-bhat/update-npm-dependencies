@@ -9,8 +9,10 @@ import {
 	applyUpdates,
 	findUpdates,
 	getBumpType,
+	lockfiles,
 	parseMiseOutdated,
 	readNcurc,
+	snapshot,
 } from "../deps";
 import { buildPickItems } from "../extension";
 
@@ -161,6 +163,23 @@ suite("options", () => {
 
 	test("no .ncurc means no extra options", () => {
 		assert.deepStrictEqual(readNcurc(fixture().dir), {});
+	});
+});
+
+suite("snapshot", () => {
+	test("restores text and binary files byte for byte", () => {
+		const { dir, read } = fixture();
+		const lockb = path.join(dir, "bun.lockb");
+		const binary = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x0a]);
+		fs.writeFileSync(lockb, binary);
+
+		const restore = snapshot([path.join(dir, "package.json"), ...lockfiles(dir)]);
+		fs.writeFileSync(path.join(dir, "package.json"), "{}");
+		fs.writeFileSync(lockb, "changed");
+		restore();
+
+		assert.strictEqual(read(), PACKAGE_JSON);
+		assert.deepStrictEqual(fs.readFileSync(lockb), binary);
 	});
 });
 

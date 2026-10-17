@@ -62,8 +62,10 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - Known: ncu only reads `pnpm-workspace.yaml` when it detects pnpm (from `pnpm-lock.yaml`); yarn/bun catalogs not covered
 
 ## 8. Check after updating
-- [ ] After a successful install, if a `test` script exists: offer [Run test] [Skip]
-- [ ] If tests fail: offer [Revert] [Keep]; revert restores `package.json` file(s) and the lockfile, then reinstalls
+- [x] After a successful install, if a real `test` script exists (not npm's "no test specified" placeholder): offer [Run test] [Skip]. Runs `<pm> run test` (`bun test` would start Bun's own runner instead)
+- [x] If tests fail: offer [Revert] [Keep]; revert restores every changed file plus the lockfile, then reinstalls
+- [x] Lockfiles are now part of every rollback, saved as bytes (`bun.lockb` is binary); tested
+- [ ] Manual (F5): project with a failing test script → Revert restores files and reinstalls
 
 ## 9. Status bar + inline hints
 - [ ] Status bar "N outdated" (click opens the picker); refreshed on activation and on `package.json` save, results cached
