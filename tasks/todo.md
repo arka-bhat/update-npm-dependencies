@@ -56,6 +56,8 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 ## 7. Multi-root and monorepo
 - [x] More than one workspace folder with `package.json` → choose folder first; skip when only one
 - [x] Found in manual testing: a single folder holding several repos (`fitflow/api`, `fitflow/mobile`, no root `package.json`) found no project. A workspace folder without `package.json` now contributes each direct subfolder that has one
+- [x] With several projects, the dependency picker is titled with the project name and has a Back button to the project list; results are cached for the run so switching is instant
+- [ ] Manual (F5): Back returns to the project list; picking the same project again shows results without re-checking
 - [ ] Manual (F5): multi-root workspace shows the project picker
 - [x] Monorepo (`workspaces` field or `pnpm-workspace.yaml`) → one picker covering all packages, one row per dependency name listing its packages (`root, packages/a`); differing current ranges shown together, most severe bump wins
 - [x] Applying a row updates the dependency in every package that uses it, plus pnpm catalogs (`pnpm-workspace.yaml`, formatting kept); one install at the root

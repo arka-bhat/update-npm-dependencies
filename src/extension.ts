@@ -91,12 +91,14 @@ export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
  * Shows a grouped, multi-select QuickPick with group-level toggle headers.
  * Selecting a group header selects/deselects all packages in that group.
  * Group headers auto-check when all their packages are individually selected.
- * Returns only the dep items (not headers), or undefined if cancelled.
+ * Returns only the dep items (not headers), undefined if cancelled, or BACK when `title` is
+ * given (several projects) and the user presses the Back button.
  */
 function showDependencyPicker(
 	pickItems: DepQuickPickItem[],
 	placeholder: string,
-): Promise<DepQuickPickItem[] | undefined> {
+	title?: string,
+): Promise<DepQuickPickItem[] | undefined | typeof BACK> {
 	return new Promise((resolve) => {
 		const qp = vscode.window.createQuickPick<DepQuickPickItem>();
 		qp.canSelectMany = true;
@@ -167,6 +169,20 @@ function showDependencyPicker(
 		});
 
 		let settled = false;
+
+		if (title) {
+			// Several projects: name the one shown and offer a way back to the project list
+			qp.title = title;
+			qp.buttons = [vscode.QuickInputButtons.Back];
+			qp.onDidTriggerButton(() => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				qp.dispose();
+				resolve(BACK);
+			});
+		}
 
 		qp.onDidAccept(() => {
 			if (settled) {
@@ -239,61 +255,78 @@ function workspaceProjects(): Project[] {
 	);
 }
 
-/**
- * The project to update. With several, asks which one; resolves to undefined if there are
- * none or the user cancels.
- */
-async function pickProject(): Promise<string | undefined> {
-	const projects = workspaceProjects();
-	if (projects.length === 0) {
-		vscode.window.showErrorMessage(
-			"No package.json found in the workspace folders or the folders directly inside them.",
-		);
-		return undefined;
-	}
-	if (projects.length === 1) {
-		return projects[0].root;
-	}
-	const picked = await vscode.window.showQuickPick(
-		projects.map((project) => ({ label: project.name, description: project.root })),
-		{ placeHolder: "Select a project to check" },
-	);
-	return picked?.description;
-}
+const BACK = Symbol("back");
 
 async function updateDependencies(
 	output: vscode.OutputChannel,
 	refresh: (rootPath: string) => Promise<void>,
 ): Promise<void> {
-	const rootPath = await pickProject();
-	if (!rootPath) {
+	const projects = workspaceProjects();
+	if (projects.length === 0) {
+		vscode.window.showErrorMessage(
+			"No package.json found in the workspace folders or the folders directly inside them.",
+		);
 		return;
 	}
+	// With several projects, the dependency picker's Back button returns to this list.
+	// Results are kept for this run so switching back and forth doesn't re-query the registry.
+	const checked = new Map<string, Update[]>();
+	for (;;) {
+		const project =
+			projects.length === 1
+				? projects[0]
+				: (
+						await vscode.window.showQuickPick(
+							projects.map((p) => ({ label: p.name, description: p.root, project: p })),
+							{ placeHolder: "Select a project to check" },
+						)
+					)?.project;
+		if (!project) {
+			return;
+		}
+		const result = await updateProject(project, projects.length > 1, checked, output, refresh);
+		if (result !== BACK) {
+			return;
+		}
+	}
+}
+
+async function updateProject(
+	project: Project,
+	canGoBack: boolean,
+	checked: Map<string, Update[]>,
+	output: vscode.OutputChannel,
+	refresh: (rootPath: string) => Promise<void>,
+): Promise<typeof BACK | void> {
+	const rootPath = project.root;
 
 	const pm = detectPackageManager(rootPath);
 	const misePath = await detectMise(rootPath);
 	const via = misePath ? " via mise" : "";
 	const options = ncuOptions(rootPath);
 
-	const updates = await vscode.window.withProgress(
-		{
-			location: vscode.ProgressLocation.Notification,
-			title: "Checking for new dependency versions...",
-			cancellable: false,
-		},
-		async () => {
-			const [packageUpdates, miseUpdates] = await Promise.all([
-				findUpdates(rootPath, options),
-				misePath
-					? findMiseUpdates(misePath, rootPath).catch((error: Error) => {
-							output.appendLine(`Could not check mise tools: ${error.message}`);
-							return [];
-						})
-					: [],
-			]);
-			return [...packageUpdates, ...miseUpdates];
-		},
-	);
+	const check = () =>
+		vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: "Checking for new dependency versions...",
+				cancellable: false,
+			},
+			async () => {
+				const [packageUpdates, miseUpdates] = await Promise.all([
+					findUpdates(rootPath, options),
+					misePath
+						? findMiseUpdates(misePath, rootPath).catch((error: Error) => {
+								output.appendLine(`Could not check mise tools: ${error.message}`);
+								return [];
+							})
+						: [],
+				]);
+				return [...packageUpdates, ...miseUpdates];
+			},
+		);
+	const updates = checked.get(rootPath) ?? (await check());
+	checked.set(rootPath, updates);
 
 	if (updates.length === 0) {
 		vscode.window.showInformationMessage("All dependencies are up to date.");
@@ -305,7 +338,11 @@ async function updateDependencies(
 	const selected = await showDependencyPicker(
 		buildPickItems(updates),
 		`Select dependencies to update (${pm}${via}${cooldown})`,
+		canGoBack ? project.name : undefined,
 	);
+	if (selected === BACK) {
+		return BACK;
+	}
 	if (!selected) {
 		vscode.window.showInformationMessage("No dependencies selected for update.");
 		return;

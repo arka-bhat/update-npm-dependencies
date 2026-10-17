@@ -15,7 +15,7 @@
 - **Link to npm** — the button on each row opens the package's versions page on npm, where its repo and changelog are linked, without closing the picker
 - **Your formatting is kept** — only the version strings change in `package.json`; indentation, layout and key order stay as they were
 - **Monorepos** — npm, yarn, bun and pnpm workspaces are checked as a whole, including pnpm catalogs. A dependency used in several packages appears once and is updated everywhere
-- **Several projects in one window** — with several workspace folders open, or one folder holding several projects (e.g. `api/` and `mobile/`, each with its own `package.json`), you choose which project to check
+- **Several projects in one window** — with several workspace folders open, or one folder holding several projects (e.g. `api/` and `mobile/`, each with its own `package.json`), you choose which project to check, and the picker's Back button takes you to another one
 - **Release cooldown** — optionally skip versions published in the last few days, a guard against freshly published compromised releases
 - **Test after updating** — if your project has a `test` script, you're offered a test run; if it fails, one click reverts the update
 - **Safe on failure** — if the update or install fails, every changed file (including the lockfile) is restored

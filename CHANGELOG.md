@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Toolchain group** — a newer package manager version for the `packageManager` field, and newer tools pinned in the project's mise config (applied with `mise upgrade --bump`), are listed in their own group at the top of the picker
 - **Monorepo support** — npm, yarn, bun and pnpm workspaces are checked as a whole, including pnpm catalogs; a dependency used in several packages appears once and is updated everywhere
-- **Several projects in one window** — with several workspace folders open, or one folder holding several projects in subfolders, you choose which project to check
+- **Several projects in one window** — with several workspace folders open, or one folder holding several projects in subfolders, you choose which project to check; a Back button in the dependency picker returns to the project list
 - **npm link button** on each picker row; the picker stays open while you browse
 - **Settings** — `updateDependencies.cooldown` (skip freshly published versions), `.target` (latest / minor / patch), `.reject` (packages to ignore), `.peer` (peer-compatible versions only), `.backgroundCheck`
 - A project `.ncurc.json` is read too
