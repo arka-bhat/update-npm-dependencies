@@ -141,6 +141,28 @@ suite("monorepo", () => {
 		await applyUpdates(dir, ["ms"], options);
 		assert.strictEqual(read("pnpm-workspace.yaml"), "packages:\n  - packages/*\ncatalog:\n  ms: ^2.1.3\n");
 	});
+
+	test("a catalog version is read from the catalog, not an earlier overrides entry", async () => {
+		const { dir, options } = fixture({
+			"package.json": '{ "name": "root", "private": true }\n',
+			"pnpm-workspace.yaml":
+				"packages:\n  - packages/*\noverrides:\n  ms: 0.7.0\ncatalog:\n  ms: ^1.0.0\n",
+			"pnpm-lock.yaml": "",
+			"packages/a/package.json": '{ "name": "a", "dependencies": { "ms": "catalog:" } }\n',
+		});
+		const ms = (await findUpdates(dir, options)).find((u) => u.name === "ms");
+		assert.strictEqual(ms?.current, "^1.0.0");
+	});
+
+	test("a pnpm-workspace.yaml holding only settings is a single-package project", async () => {
+		const { dir, options } = fixture({
+			"package.json": PACKAGE_JSON,
+			"pnpm-workspace.yaml": "onlyBuiltDependencies:\n  - esbuild\n",
+			"pnpm-lock.yaml": "",
+		});
+		const names = (await findUpdates(dir, options)).map((u) => u.name).sort();
+		assert.deepStrictEqual(names, ["ms", "pnpm", "semver"]);
+	});
 });
 
 suite("options", () => {
@@ -162,6 +184,17 @@ suite("options", () => {
 		assert.deepStrictEqual(readNcurc(dir), { reject: ["semver"], cooldown: 3 });
 	});
 
+	test("rc options that would write files or prompt are ignored", async () => {
+		const { dir, options, read } = fixture();
+		fs.writeFileSync(
+			path.join(dir, ".ncurc.json"),
+			'{ "upgrade": true, "interactive": true, "errorLevel": 2, "reject": ["ms"] }',
+		);
+		assert.deepStrictEqual(readNcurc(dir), { reject: ["ms"] });
+		await findUpdates(dir, { ...options, ...readNcurc(dir) });
+		assert.strictEqual(read(), PACKAGE_JSON);
+	});
+
 	test("no .ncurc means no extra options", () => {
 		assert.deepStrictEqual(readNcurc(fixture().dir), {});
 	});
@@ -174,13 +207,22 @@ suite("snapshot", () => {
 		const binary = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x0a]);
 		fs.writeFileSync(lockb, binary);
 
-		const restore = snapshot([path.join(dir, "package.json"), ...lockfiles(dir)]);
+		const saved = snapshot([path.join(dir, "package.json"), ...lockfiles(dir)]);
 		fs.writeFileSync(path.join(dir, "package.json"), "{}");
 		fs.writeFileSync(lockb, "changed");
-		restore();
+		saved.restore();
 
 		assert.strictEqual(read(), PACKAGE_JSON);
 		assert.deepStrictEqual(fs.readFileSync(lockb), binary);
+	});
+
+	test("reports which files changed since it was taken", () => {
+		const { dir } = fixture();
+		fs.writeFileSync(path.join(dir, "package-lock.json"), "{}");
+		const saved = snapshot([path.join(dir, "package.json"), ...lockfiles(dir)]);
+		assert.deepStrictEqual(saved.changed(), []);
+		fs.writeFileSync(path.join(dir, "package-lock.json"), '{ "edited": true }');
+		assert.deepStrictEqual(saved.changed(), [path.join(dir, "package-lock.json")]);
 	});
 });
 
@@ -271,6 +313,21 @@ suite("hintsFor", () => {
 		assert.deepStrictEqual(hints, [
 			{ line: 4, text: "→ ^2.0.0 · major" },
 			{ line: 1, text: "→ ^2.0.0 · major" },
+		]);
+	});
+
+	test("skips same-named config keys and scripts", () => {
+		const text = [
+			"{", // 0
+			'\t"prettier": "@acme/prettier-config",', // 1
+			'\t"scripts": { "prettier": "prettier --write ." },', // 2
+			'\t"devDependencies": {', // 3
+			'\t\t"prettier": "^1.0.0"', // 4
+			"\t}",
+			"}",
+		].join("\n");
+		assert.deepStrictEqual(hintsFor(file, text, [update("prettier")]), [
+			{ line: 4, text: "→ ^2.0.0 · major" },
 		]);
 	});
 

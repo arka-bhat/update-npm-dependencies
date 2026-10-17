@@ -5,6 +5,8 @@ import { type Update, findUpdates } from "./deps";
 
 export type Hint = { line: number; text: string };
 
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
  * Where to show each update inside one package file: the line holding the dependency (or
  * the packageManager field) and the text to append after it.
@@ -14,11 +16,14 @@ export function hintsFor(file: string, text: string, updates: Update[]): Hint[] 
 	return updates
 		.filter((update) => update.files.includes(file))
 		.flatMap((update) => {
-			const key = update.toolchain === "packageManager" ? "packageManager" : update.name;
-			const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			const isPackageManager = update.toolchain === "packageManager";
+			const key = escape(isPackageManager ? "packageManager" : update.name);
+			// The value must be the current version, so a same-named scripts entry or top-level
+			// config key ("prettier": "@acme/prettier-config") doesn't take the hint
+			const values = (isPackageManager ? [`${update.name}@`] : update.current.split(", ")).map(escape);
 			// Key at a word boundary, quoted (JSON) or bare (YAML catalog): "ms": / ms: but not "@types/ms":
-			const pattern = new RegExp(`(?<=^|[\\s{,"'])${escaped}["']?\\s*:`);
-			// ponytail: first match wins; a name repeated in peerDependencies above gets the hint there
+			const pattern = new RegExp(`(?<=^|[\\s{,"'])${key}["']?\\s*:\\s*["']?(?:${values.join("|")})`);
+			// ponytail: first match wins; the same name and range in peerDependencies above would get it
 			const line = lines.findIndex((l) => pattern.test(l));
 			return line === -1 ? [] : [{ line, text: `→ ${update.latest} · ${update.bump}` }];
 		});
@@ -68,14 +73,32 @@ export function startOutdatedIndicator(
 		}
 	};
 
+	// Bumped per project on every check, so a slow, older check can't overwrite a newer result
+	const generations = new Map<string, number>();
+
 	const check = async (rootPath: string) => {
 		if (!enabled()) {
 			return;
 		}
+		const generation = (generations.get(rootPath) ?? 0) + 1;
+		generations.set(rootPath, generation);
+		let updates: Update[] | undefined;
 		try {
-			results.set(rootPath, await findUpdates(rootPath, ncuOptions(rootPath)));
+			updates = await findUpdates(rootPath, ncuOptions(rootPath));
 		} catch (error) {
 			output.appendLine(`Background check failed for ${rootPath}: ${(error as Error).message}`);
+		}
+		// Drop the result if a newer check started, checks were turned off or the folder was removed meanwhile
+		if (
+			generations.get(rootPath) !== generation ||
+			!enabled() ||
+			!projectRoots().includes(rootPath)
+		) {
+			return;
+		}
+		if (updates) {
+			results.set(rootPath, updates);
+		} else {
 			results.delete(rootPath);
 		}
 		render();

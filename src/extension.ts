@@ -198,7 +198,12 @@ function runCommand(
 ): Promise<void> {
 	output.appendLine(`Running: ${command} ${args.join(" ")}\n`);
 	return new Promise((resolve, reject) => {
-		const child = spawn(command, args, { cwd, shell: true });
+		const child =
+			process.platform === "win32"
+				? // npm/pnpm/yarn are .cmd shims on Windows and need cmd.exe; quote each part so paths with spaces survive
+					spawn([command, ...args].map((part) => `"${part}"`).join(" "), { cwd, shell: true })
+				: // No shell elsewhere: arguments (e.g. tool names from a mise config) are never shell-parsed
+					spawn(command, args, { cwd });
 		child.stdout.on("data", (data: Buffer) => output.append(data.toString()));
 		child.stderr.on("data", (data: Buffer) => output.append(data.toString()));
 		child.on("close", (code) =>
@@ -304,7 +309,8 @@ async function updateDependencies(
 	const miseTools = chosen.filter((u) => u.toolchain === "mise");
 
 	// Everything the update may change, so a failed update, install or test run can be undone
-	const restore = snapshot([...new Set(chosen.flatMap((u) => u.files)), ...lockfiles(rootPath)]);
+	const files = [...new Set(chosen.flatMap((u) => u.files)), ...lockfiles(rootPath)];
+	const before = snapshot(files);
 	const packageManager = (...args: string[]) =>
 		misePath
 			? runCommand(output, misePath, ["exec", "--", pm, ...args], rootPath)
@@ -315,27 +321,34 @@ async function updateDependencies(
 			task,
 		);
 
-	try {
-		await progress(`Updating with ${pm}${misePath ? " (mise)" : ""}...`, async () => {
-			output.clear();
-			output.show(true);
-			if (packageNames.length > 0) {
-				await applyUpdates(rootPath, packageNames, options);
-			}
-			if (misePath && miseTools.length > 0) {
-				// Bump mise pins first so the install runs on the new tool versions
-				const tools = miseTools.map((u) => u.name);
-				await runCommand(output, misePath, ["upgrade", "--bump", ...tools], rootPath);
-			}
-			await packageManager("install");
-		});
-	} catch (error: any) {
-		restore();
-		vscode.window.showErrorMessage(
-			`Update failed: ${error.message}. Your files have been restored. See the "Update Dependencies" output panel for details.`,
-		);
+	const installed = await exclusively(async () => {
+		try {
+			await progress(`Updating with ${pm}${misePath ? " (mise)" : ""}...`, async () => {
+				output.clear();
+				output.show(true);
+				if (packageNames.length > 0) {
+					await applyUpdates(rootPath, packageNames, options);
+				}
+				if (misePath && miseTools.length > 0) {
+					// Bump mise pins first so the install runs on the new tool versions
+					const tools = miseTools.map((u) => u.name);
+					await runCommand(output, misePath, ["upgrade", "--bump", ...tools], rootPath);
+				}
+				await packageManager("install");
+			});
+			return true;
+		} catch (error: any) {
+			before.restore();
+			vscode.window.showErrorMessage(
+				`Update failed: ${error.message}. Your files have been restored. See the "Update Dependencies" output panel for details.`,
+			);
+			return false;
+		}
+	});
+	if (!installed) {
 		return;
 	}
+	const after = snapshot(files);
 	void refresh(rootPath);
 
 	const updated = `Dependencies updated successfully (${pm}${via}).`;
@@ -351,22 +364,70 @@ async function updateDependencies(
 	if (choice !== "Run test") {
 		return;
 	}
-	try {
-		// `run test`, not `test`: `bun test` would start Bun's own runner instead of the script
-		await progress("Running tests...", () => packageManager("run", "test"));
-		vscode.window.showInformationMessage("Tests passed with the updated dependencies.");
-	} catch {
-		const revert = await vscode.window.showWarningMessage(
-			"Tests failed after the update. Revert it? See the \"Update Dependencies\" output panel for the test output.",
-			"Revert",
-			"Keep",
-		);
-		if (revert === "Revert") {
-			restore();
-			await progress("Reverting...", () => packageManager("install"));
-			vscode.window.showInformationMessage("Update reverted.");
-			void refresh(rootPath);
+	const passed = await exclusively(async () => {
+		try {
+			// `run test`, not `test`: `bun test` would start Bun's own runner instead of the script
+			await progress("Running tests...", () => packageManager("run", "test"));
+			return true;
+		} catch {
+			return false;
 		}
+	});
+	if (passed === undefined) {
+		return;
+	}
+	if (passed) {
+		vscode.window.showInformationMessage("Tests passed with the updated dependencies.");
+		return;
+	}
+
+	const revert = await vscode.window.showWarningMessage(
+		'Tests failed after the update. Revert it? See the "Update Dependencies" output panel for the test output.',
+		"Revert",
+		"Keep",
+	);
+	if (revert !== "Revert") {
+		return;
+	}
+	// The prompt may have sat for a while; don't silently drop edits made since the update
+	const edited = after.changed().map((file) => path.relative(rootPath, file));
+	if (edited.length > 0) {
+		const proceed = await vscode.window.showWarningMessage(
+			`${edited.join(", ")} changed since the update. Reverting restores the version from before the update and discards those changes.`,
+			{ modal: true },
+			"Revert anyway",
+		);
+		if (proceed !== "Revert anyway") {
+			return;
+		}
+	}
+	await exclusively(async () => {
+		before.restore();
+		await progress("Reverting...", () => packageManager("install"));
+		vscode.window.showInformationMessage("Update reverted.");
+		void refresh(rootPath);
+	});
+}
+
+let busy = false;
+
+/**
+ * Runs `task` unless another install, test run or revert is in progress (they'd share the
+ * same files and lockfile). Resolves to undefined when skipped. Prompts waiting on the user
+ * don't hold the lock, so a forgotten notification can't block the command.
+ */
+async function exclusively<T>(task: () => Promise<T>): Promise<T | undefined> {
+	if (busy) {
+		vscode.window.showWarningMessage(
+			"Another dependency update is still running. Try again when it finishes.",
+		);
+		return undefined;
+	}
+	busy = true;
+	try {
+		return await task();
+	} finally {
+		busy = false;
 	}
 }
 
@@ -396,8 +457,8 @@ export function activate(context: vscode.ExtensionContext) {
 		),
 	);
 
-	// Lets the test suite exercise the webpack bundle, not just the tsc output
-	return { findUpdates, applyUpdates };
+	// Lets the test suite exercise the webpack bundle, not just the tsc output (read-only on purpose)
+	return { findUpdates };
 }
 
 export function deactivate() {}

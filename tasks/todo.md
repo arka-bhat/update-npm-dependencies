@@ -80,4 +80,22 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 ---
 
 ## Review
-_(filled in as steps complete)_
+
+All steps done on `release/2.1.0`; 31 tests pass (offline, inside VS Code 1.142), lint clean, `npm audit` 0.
+
+Independent code review of the branch found, and these were fixed:
+- [x] **High:** `.ncurc.json` was passed to ncu whole, so `"upgrade": true` made a background check rewrite package.json, and `"interactive": true` could hang it. Only version-narrowing rc options are read now
+- [x] **High:** any `pnpm-workspace.yaml` counted as a monorepo, but pnpm 10 keeps plain settings there; ncu then threw and the project could never be updated. Now requires `packages:`
+- [x] Two updates could run at once on the same lockfile. Installs, test runs and reverts are now exclusive (prompts don't hold the lock)
+- [x] Revert could silently discard edits made while tests ran. Now asks first if files changed since the update
+- [x] Overlapping background checks could leave a stale count; older results are discarded, and results arriving after checks are turned off are dropped
+- [x] Commands ran through a shell with unquoted arguments (paths with spaces broke). No shell outside Windows; quoted on Windows
+- [x] Inline hints matched the first same-named key (e.g. a top-level `"prettier"` config). They now also match the current version
+- [x] pnpm catalog versions read from `catalog:` on, not an earlier `overrides:` entry; `mise.lock` included in rollback; Windows `where` output `\r` stripped; test API exposes only `findUpdates`
+- [x] Monorepo rows came back in varying order (ncu's order isn't stable); now sorted
+
+Known limitations, not fixed:
+- yarn/bun catalogs (`workspaces.catalog` in package.json) aren't looked up; such entries show `?` as the current version
+- A merged monorepo row shows the first package's latest range (`^` vs `~` may differ per package)
+- A failed install restores files but doesn't reinstall; Windows paths were reasoned about, not run
+- Manual checks above (F5) still to do: link button, multi-root picker, test-run revert, status bar and hints

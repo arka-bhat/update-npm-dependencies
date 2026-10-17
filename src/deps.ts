@@ -85,7 +85,8 @@ export async function detectMise(rootPath: string): Promise<string | false> {
 		const whichCmd = process.platform === "win32" ? "where mise" : "which mise";
 		exec(whichCmd, { env: process.env }, (err, stdout) => {
 			const found = !err && stdout.trim().length > 0;
-			resolve(found ? stdout.trim().split("\n")[0] : false);
+			// `where` on Windows ends lines with \r\n
+			resolve(found ? stdout.trim().split(/\r?\n/)[0] : false);
 		});
 	});
 }
@@ -118,18 +119,47 @@ export function getBumpType(currentVersion: string, newVersion: string): BumpTyp
  */
 export function readNcurc(rootPath: string): RunOptions {
 	for (const name of [".ncurc.json", ".ncurc"]) {
+		let rc: Record<string, unknown>;
 		try {
-			return JSON.parse(fs.readFileSync(path.join(rootPath, name), "utf-8"));
+			rc = JSON.parse(fs.readFileSync(path.join(rootPath, name), "utf-8"));
 		} catch {
 			// ponytail: JSON only; YAML and JS config files need ncu's own loader, which isn't exported
+			continue;
 		}
+		return Object.fromEntries(Object.entries(rc).filter(([key]) => RC_OPTIONS.includes(key)));
 	}
 	return {};
 }
 
+/**
+ * rc options that only narrow which versions are offered. Anything else (upgrade,
+ * interactive, errorLevel, deep, …) would let a background check write files, block on a
+ * prompt or change the shape of the result.
+ */
+const RC_OPTIONS = [
+	"cooldown",
+	"dep",
+	"deprecated",
+	"enginesNode",
+	"filter",
+	"filterVersion",
+	"peer",
+	"pre",
+	"registry",
+	"registryType",
+	"reject",
+	"rejectVersion",
+	"target",
+];
+
 /** A monorepo is checked and updated as a whole: every workspace package plus pnpm catalogs. */
 export function isMonorepo(rootPath: string): boolean {
-	if (fs.existsSync(path.join(rootPath, "pnpm-workspace.yaml"))) {
+	const pnpmWorkspace = path.join(rootPath, "pnpm-workspace.yaml");
+	// pnpm 10 also keeps plain settings here (onlyBuiltDependencies, overrides); only `packages:` makes a workspace
+	if (
+		fs.existsSync(pnpmWorkspace) &&
+		/^packages\s*:/m.test(fs.readFileSync(pnpmWorkspace, "utf-8"))
+	) {
 		return true;
 	}
 	try {
@@ -152,10 +182,13 @@ type Current = { version: string; packageManager?: boolean };
 function currentVersions(file: string): (name: string) => Current | undefined {
 	const text = fs.readFileSync(file, "utf-8");
 	if (!file.endsWith(".json")) {
+		// Search from catalog:/catalogs: on, so an overrides: entry for the same name doesn't match
+		const catalogs = text.slice(Math.max(0, text.search(/^catalogs?\s*:/m)));
 		// ponytail: line match instead of a YAML parser; catalog entries are one `name: range` per line
 		return (name) => {
 			const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-			const match = text.match(new RegExp(`^\\s+['"]?${escaped}['"]?:\\s*['"]?([^'"\\s#]+)`, "m"));
+			const pattern = new RegExp(`^\\s+['"]?${escaped}['"]?:\\s*['"]?([^'"\\s#]+)`, "m");
+			const match = catalogs.match(pattern);
 			return match ? { version: match[1] } : undefined;
 		};
 	}
@@ -190,7 +223,9 @@ export async function findUpdates(rootPath: string, options: RunOptions = {}): P
 	>;
 
 	const updates = new Map<string, Update>();
-	for (const [relativeFile, upgraded] of Object.entries(byFile)) {
+	// ncu returns workspace packages in no fixed order; sort so rows and labels are stable
+	const entries = Object.entries(byFile).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+	for (const [relativeFile, upgraded] of entries) {
 		const file = path.join(rootPath, relativeFile);
 		const lookup = currentVersions(file);
 		for (const [name, latest] of Object.entries(upgraded)) {
@@ -245,15 +280,28 @@ export async function applyUpdates(
 	await run({ ...options, ...scope(rootPath), upgrade: true, filter: names, install: "never" });
 }
 
-/** Saves the files' current bytes (lockfiles like bun.lockb are binary); the returned function writes them back. */
-export function snapshot(files: string[]): () => void {
+export type Snapshot = {
+	/** Writes the saved bytes back */
+	restore: () => void;
+	/** Files whose content no longer matches what was saved */
+	changed: () => string[];
+};
+
+/** Saves the files' current bytes (lockfiles like bun.lockb are binary). */
+export function snapshot(files: string[]): Snapshot {
 	const saved = files.map((file) => [file, fs.readFileSync(file)] as const);
-	return () => saved.forEach(([file, data]) => fs.writeFileSync(file, data));
+	return {
+		restore: () => saved.forEach(([file, data]) => fs.writeFileSync(file, data)),
+		changed: () =>
+			saved
+				.filter(([file, data]) => !fs.existsSync(file) || !fs.readFileSync(file).equals(data))
+				.map(([file]) => file),
+	};
 }
 
-/** The project's existing lockfiles. */
+/** The project's existing lockfiles, mise's included (`mise upgrade` may write it). */
 export function lockfiles(rootPath: string): string[] {
-	return ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb"]
+	return ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb", "mise.lock"]
 		.map((name) => path.join(rootPath, name))
 		.filter((file) => fs.existsSync(file));
 }
