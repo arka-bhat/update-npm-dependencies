@@ -49,9 +49,9 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - [x] Same options used for the check and the write, so the written version matches the one shown
 
 ## 6. Link button per row
-- [ ] Button opens `npmjs.com/package/<name>?activeTab=versions`
-- [ ] `ignoreFocusOut = true` so the picker stays open and keeps selections
-- Manual: click link → browser opens → picker still open with same checkboxes
+- [x] Button opens `npmjs.com/package/<name>?activeTab=versions` (npm rows and the packageManager row; not mise tools)
+- [x] `ignoreFocusOut = true` so the picker stays open and keeps selections
+- [ ] Manual (F5): click link → browser opens → picker still open with same checkboxes
 
 ## 7. Multi-root and monorepo
 - [ ] More than one workspace folder with `package.json` → choose folder first; skip when only one

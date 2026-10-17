@@ -35,6 +35,11 @@ function bumpIcon(bump: BumpType): vscode.ThemeIcon {
  * Builds the picker rows: a Toolchain group first (package manager and mise pins, no
  * Select-all toggle), then Patch, Minor and Major groups, each with a Select-all row.
  */
+const npmButton: vscode.QuickInputButton = {
+	iconPath: new vscode.ThemeIcon("link-external"),
+	tooltip: "Open on npm",
+};
+
 export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 	const row = (update: Update, groupKey?: BumpType): DepQuickPickItem => {
 		const where = update.file ? path.basename(update.file) : update.toolchain;
@@ -42,6 +47,8 @@ export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 			label: update.name,
 			description: `${update.current} → ${update.latest} · ${update.bump}${where ? ` · ${where}` : ""}`,
 			iconPath: update.toolchain ? new vscode.ThemeIcon("tools") : bumpIcon(update.bump),
+			// mise tools (node, python, …) aren't npm packages
+			buttons: update.toolchain === "mise" ? [] : [npmButton],
 			update,
 			groupKey,
 		};
@@ -91,6 +98,14 @@ function showDependencyPicker(
 		qp.canSelectMany = true;
 		qp.items = pickItems;
 		qp.placeholder = placeholder;
+		// Opening a link moves focus to the browser; without this the picker would close and cancel
+		qp.ignoreFocusOut = true;
+
+		qp.onDidTriggerItemButton(({ item }) => {
+			vscode.env.openExternal(
+				vscode.Uri.parse(`https://www.npmjs.com/package/${item.update!.name}?activeTab=versions`),
+			);
+		});
 
 		let prevSelected = new Set<DepQuickPickItem>();
 		let isUpdating = false;

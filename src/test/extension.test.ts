@@ -155,6 +155,13 @@ suite("buildPickItems", () => {
 		);
 		assert.strictEqual(items.find((i) => i.label === "pnpm")?.groupKey, undefined);
 	});
+
+	test("npm rows get a link button, mise tools don't", () => {
+		const items = buildPickItems([update("react", "major"), update("node", "major", "mise")]);
+		const buttons = (name: string) => items.find((i) => i.label === name)?.buttons?.length;
+		assert.strictEqual(buttons("react"), 1);
+		assert.strictEqual(buttons("node"), 0);
+	});
 });
 
 suite("bundle", () => {
