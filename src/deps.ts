@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
+import { promisify } from "util";
 import { run, type RunOptions } from "npm-check-updates";
 
 export type PackageManager = "npm" | "yarn" | "pnpm" | "bun";
@@ -11,6 +12,10 @@ export type Update = {
 	current: string;
 	latest: string;
 	bump: BumpType;
+	/** Set for package manager / runtime versions rather than dependencies */
+	toolchain?: "packageManager" | "mise";
+	/** Config file holding a mise pin */
+	file?: string;
 };
 
 export function detectPackageManager(rootPath: string): PackageManager {
@@ -118,10 +123,55 @@ export async function findUpdates(rootPath: string, options: RunOptions = {}): P
 		...pkg.devDependencies,
 		...pkg.dependencies,
 	};
-	return Object.entries(upgraded).map(([name, latest]) => {
-		const from = current[name] ?? "?";
-		return { name, current: from, latest, bump: getBumpType(from, latest) };
+	// "pnpm@9.0.0+sha512.abc" → ["pnpm", "9.0.0"]; ncu reports it under the bare name
+	const [pmName, pmVersion] = String(pkg.packageManager ?? "").split("+")[0].split("@");
+	return Object.entries(upgraded).map(([name, latest]): Update => {
+		const isPackageManager = name === pmName && !(name in current);
+		const from = isPackageManager ? pmVersion : (current[name] ?? "?");
+		return {
+			name,
+			current: from,
+			latest,
+			bump: getBumpType(from, latest),
+			toolchain: isPackageManager ? "packageManager" : undefined,
+		};
 	});
+}
+
+type MiseOutdated = Record<
+	string,
+	{ requested: string; bump: string | null; source?: { path?: string } }
+>;
+
+/**
+ * Turns `mise outdated --bump --json` output into updates, keeping only tools pinned in
+ * the project's own config files (never the user's global mise config).
+ */
+export function parseMiseOutdated(json: string, rootPath: string): Update[] {
+	return Object.entries(JSON.parse(json) as MiseOutdated)
+		.filter(
+			([, tool]) =>
+				tool.bump &&
+				tool.bump !== tool.requested &&
+				tool.source?.path?.startsWith(rootPath + path.sep),
+		)
+		.map(([name, tool]): Update => ({
+			name,
+			current: tool.requested,
+			latest: tool.bump!,
+			bump: getBumpType(tool.requested, tool.bump!),
+			toolchain: "mise",
+			file: tool.source!.path,
+		}));
+}
+
+/** Tools pinned in the project's mise config that have a release past the pinned version. */
+export async function findMiseUpdates(misePath: string, rootPath: string): Promise<Update[]> {
+	const { stdout } = await promisify(execFile)(misePath, ["outdated", "--bump", "--json"], {
+		cwd: rootPath,
+	});
+	// mise reports real paths (e.g. /private/tmp on macOS), so compare against the real root
+	return parseMiseOutdated(stdout, fs.realpathSync(rootPath));
 }
 
 /**

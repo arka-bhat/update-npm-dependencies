@@ -3,7 +3,15 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { type BumpType, applyUpdates, findUpdates, getBumpType } from "../deps";
+import {
+	type BumpType,
+	type Update,
+	applyUpdates,
+	findUpdates,
+	getBumpType,
+	parseMiseOutdated,
+} from "../deps";
+import { buildPickItems } from "../extension";
 
 // Offline registry: npm-check-updates reads latest versions from this file instead of npm
 const REGISTRY = { semver: "7.8.5", ms: "2.1.3", pnpm: "12.14.0" };
@@ -62,8 +70,65 @@ suite("findUpdates", () => {
 		assert.deepStrictEqual(byName, {
 			semver: "^6.0.0 → ^7.8.5",
 			ms: "^1.0.0 → ^2.1.3",
-			pnpm: "? → 12.14.0",
+			pnpm: "9.0.0 → 12.14.0",
 		});
+		assert.deepStrictEqual(
+			updates.filter((u) => u.toolchain).map((u) => [u.name, u.toolchain]),
+			[["pnpm", "packageManager"]],
+		);
+	});
+
+	test("reads the packageManager version past a corepack hash", async () => {
+		const { dir, options } = fixture(PACKAGE_JSON.replace("pnpm@9.0.0", "pnpm@9.0.0+sha512.abc"));
+		const pnpm = (await findUpdates(dir, options)).find((u) => u.name === "pnpm");
+		assert.strictEqual(pnpm?.current, "9.0.0");
+	});
+});
+
+suite("parseMiseOutdated", () => {
+	const root = "/work/app";
+	const tool = (requested: string, bump: string | null, file: string) => ({
+		requested,
+		bump,
+		latest: bump,
+		source: { type: path.basename(file), path: file },
+	});
+
+	test("keeps only project pins with a newer release", () => {
+		const json = JSON.stringify({
+			node: tool("20", "26", `${root}/mise.toml`),
+			pnpm: tool("9.0.0", "12.14.0", `${root}/.tool-versions`),
+			bun: tool("1.3.0", "1.3.0", `${root}/mise.toml`),
+			go: tool("1.22", null, `${root}/mise.toml`),
+			python: tool("3.12", "3.14", "/home/me/.config/mise/config.toml"),
+		});
+		assert.deepStrictEqual(parseMiseOutdated(json, root), [
+			{ name: "node", current: "20", latest: "26", bump: "major", toolchain: "mise", file: `${root}/mise.toml` },
+			{ name: "pnpm", current: "9.0.0", latest: "12.14.0", bump: "major", toolchain: "mise", file: `${root}/.tool-versions` },
+		]);
+	});
+});
+
+suite("buildPickItems", () => {
+	const update = (name: string, bump: BumpType, toolchain?: Update["toolchain"]): Update => ({
+		name,
+		current: "1.0.0",
+		latest: "2.0.0",
+		bump,
+		toolchain,
+	});
+
+	test("puts the toolchain first with no Select-all row, then bump groups", () => {
+		const items = buildPickItems([
+			update("react", "major"),
+			update("pnpm", "major", "packageManager"),
+			update("lodash", "patch"),
+		]);
+		assert.deepStrictEqual(
+			items.map((i) => (i.kind === vscode.QuickPickItemKind.Separator ? `--${i.label}` : i.label)),
+			["--Toolchain", "pnpm", "--Patch", "Select all `patch`", "lodash", "--Major", "Select all `major`", "react"],
+		);
+		assert.strictEqual(items.find((i) => i.label === "pnpm")?.groupKey, undefined);
 	});
 });
 

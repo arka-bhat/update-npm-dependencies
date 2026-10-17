@@ -8,11 +8,12 @@ import {
 	applyUpdates,
 	detectMise,
 	detectPackageManager,
+	findMiseUpdates,
 	findUpdates,
 } from "./deps";
 
-type DepQuickPickItem = vscode.QuickPickItem & {
-	depName?: string;
+export type DepQuickPickItem = vscode.QuickPickItem & {
+	update?: Update;
 	groupKey?: BumpType;
 	isGroupHeader?: boolean;
 };
@@ -26,6 +27,51 @@ function bumpIcon(bump: BumpType): vscode.ThemeIcon {
 		case "patch":
 			return new vscode.ThemeIcon("pass");
 	}
+}
+
+/**
+ * Builds the picker rows: a Toolchain group first (package manager and mise pins, no
+ * Select-all toggle), then Patch, Minor and Major groups, each with a Select-all row.
+ */
+export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
+	const row = (update: Update, groupKey?: BumpType): DepQuickPickItem => {
+		const where = update.file ? path.basename(update.file) : update.toolchain;
+		return {
+			label: update.name,
+			description: `${update.current} → ${update.latest} · ${update.bump}${where ? ` · ${where}` : ""}`,
+			iconPath: update.toolchain ? new vscode.ThemeIcon("tools") : bumpIcon(update.bump),
+			update,
+			groupKey,
+		};
+	};
+
+	const items: DepQuickPickItem[] = [];
+	const toolchain = updates.filter((u) => u.toolchain);
+	if (toolchain.length > 0) {
+		items.push({ label: "Toolchain", kind: vscode.QuickPickItemKind.Separator });
+		items.push(...toolchain.map((u) => row(u)));
+	}
+	const groups = [
+		["patch", "Patch"],
+		["minor", "Minor"],
+		["major", "Major"],
+	] as const;
+	for (const [bump, label] of groups) {
+		const group = updates.filter((u) => !u.toolchain && u.bump === bump);
+		if (group.length === 0) {
+			continue;
+		}
+		items.push({ label, kind: vscode.QuickPickItemKind.Separator });
+		items.push({
+			label: `Select all \`${bump}\``,
+			description: `${group.length} ${group.length === 1 ? "package" : "packages"}`,
+			iconPath: bumpIcon(bump),
+			isGroupHeader: true,
+			groupKey: bump,
+		});
+		items.push(...group.map((u) => row(u, bump)));
+	}
+	return items;
 }
 
 /**
@@ -81,7 +127,7 @@ function showDependencyPicker(
 				// Auto-sync group headers: check iff all their deps are selected
 				for (const item of pickItems.filter((i) => i.isGroupHeader)) {
 					const groupDeps = pickItems.filter(
-						(i) => !i.isGroupHeader && i.groupKey === item.groupKey && i.depName,
+						(i) => !i.isGroupHeader && i.groupKey === item.groupKey && i.update,
 					);
 					const allSelected =
 						groupDeps.length > 0 && groupDeps.every((d) => result.has(d));
@@ -106,7 +152,7 @@ function showDependencyPicker(
 				return;
 			}
 			settled = true;
-			const deps = qp.selectedItems.filter((i) => !!i.depName);
+			const deps = qp.selectedItems.filter((i) => !!i.update);
 			qp.dispose();
 			resolve(deps.length > 0 ? deps : undefined);
 		});
@@ -124,177 +170,135 @@ function showDependencyPicker(
 	});
 }
 
+/** Runs a command in `cwd`, streaming its output to the channel; rejects on a non-zero exit. */
+function runCommand(
+	output: vscode.OutputChannel,
+	command: string,
+	args: string[],
+	cwd: string,
+): Promise<void> {
+	output.appendLine(`Running: ${command} ${args.join(" ")}\n`);
+	return new Promise((resolve, reject) => {
+		const child = spawn(command, args, { cwd, shell: true });
+		child.stdout.on("data", (data: Buffer) => output.append(data.toString()));
+		child.stderr.on("data", (data: Buffer) => output.append(data.toString()));
+		child.on("close", (code) =>
+			code === 0 ? resolve() : reject(new Error(`${command} exited with code ${code}`)),
+		);
+		child.on("error", reject);
+	});
+}
+
+/** Saves the files' current text; the returned function writes it back. */
+function snapshot(files: string[]): () => void {
+	const saved = files.map((file) => [file, fs.readFileSync(file, "utf-8")] as const);
+	return () => saved.forEach(([file, text]) => fs.writeFileSync(file, text, "utf-8"));
+}
+
+async function updateDependencies(output: vscode.OutputChannel): Promise<void> {
+	const rootPath = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+	if (!rootPath) {
+		vscode.window.showErrorMessage("Please open a workspace with a package.json file.");
+		return;
+	}
+
+	const packageJsonPath = path.join(rootPath, "package.json");
+	if (!fs.existsSync(packageJsonPath)) {
+		vscode.window.showErrorMessage("No package.json found in the root of the workspace.");
+		return;
+	}
+
+	const pm = detectPackageManager(rootPath);
+	const misePath = await detectMise(rootPath);
+	const via = misePath ? " via mise" : "";
+
+	const updates = await vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: "Checking for new dependency versions...",
+			cancellable: false,
+		},
+		async () => {
+			const [packageUpdates, miseUpdates] = await Promise.all([
+				findUpdates(rootPath),
+				misePath
+					? findMiseUpdates(misePath, rootPath).catch((error: Error) => {
+							output.appendLine(`Could not check mise tools: ${error.message}`);
+							return [];
+						})
+					: [],
+			]);
+			return [...packageUpdates, ...miseUpdates];
+		},
+	);
+
+	if (updates.length === 0) {
+		vscode.window.showInformationMessage("All dependencies are up to date.");
+		return;
+	}
+	vscode.window.showInformationMessage(`Found ${updates.length} outdated packages`);
+
+	const selected = await showDependencyPicker(
+		buildPickItems(updates),
+		`Select dependencies to update (${pm}${via})`,
+	);
+	if (!selected) {
+		vscode.window.showInformationMessage("No dependencies selected for update.");
+		return;
+	}
+
+	const chosen = selected.map((item) => item.update!);
+	const packageNames = chosen.filter((u) => u.toolchain !== "mise").map((u) => u.name);
+	const miseTools = chosen.filter((u) => u.toolchain === "mise");
+
+	// Everything we may write, so a failed update or install can be undone
+	const restore = snapshot([packageJsonPath, ...new Set(miseTools.map((u) => u.file!))]);
+
+	try {
+		await vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Updating with ${pm}${misePath ? " (mise)" : ""}...`,
+				cancellable: false,
+			},
+			async () => {
+				output.clear();
+				output.show(true);
+				if (packageNames.length > 0) {
+					await applyUpdates(rootPath, packageNames);
+				}
+				if (misePath) {
+					// Bump mise pins first so the install runs on the new tool versions
+					if (miseTools.length > 0) {
+						const tools = miseTools.map((u) => u.name);
+						await runCommand(output, misePath, ["upgrade", "--bump", ...tools], rootPath);
+					}
+					await runCommand(output, misePath, ["exec", "--", pm, "install"], rootPath);
+				} else {
+					await runCommand(output, pm, ["install"], rootPath);
+				}
+			},
+		);
+		vscode.window.showInformationMessage(`Dependencies updated successfully (${pm}${via}).`);
+	} catch (error: any) {
+		restore();
+		vscode.window.showErrorMessage(
+			`Update failed: ${error.message}. Your files have been restored. See the "Update Dependencies" output panel for details.`,
+		);
+	}
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel("Update Dependencies");
 	context.subscriptions.push(outputChannel);
 
-	const disposable = vscode.commands.registerCommand(
-		"update-npm-dependencies.updateDependencies",
-		async () => {
-			const rootPath = vscode.workspace.workspaceFolders
-				? vscode.workspace.workspaceFolders[0].uri.fsPath
-				: undefined;
-
-			if (!rootPath) {
-				vscode.window.showErrorMessage("Please open a workspace with a package.json file.");
-				return;
-			}
-
-			const packageJsonPath = path.join(rootPath, "package.json");
-
-			if (!fs.existsSync(packageJsonPath)) {
-				vscode.window.showErrorMessage(
-					"No package.json found in the root of the workspace.",
-				);
-				return;
-			}
-
-			try {
-				const [pm, misePath] = await Promise.all([
-					Promise.resolve(detectPackageManager(rootPath)),
-					detectMise(rootPath),
-				]);
-				const useMise = misePath !== false;
-
-				const updates = await vscode.window.withProgress(
-					{
-						location: vscode.ProgressLocation.Notification,
-						title: "Checking for new dependency versions...",
-						cancellable: false,
-					},
-					async (progress) => {
-						const result = await findUpdates(rootPath);
-						progress.report({
-							increment: 100,
-							message: "Dependencies check complete.",
-						});
-						vscode.window.showInformationMessage(
-							`Found ${result.length} outdated packages`,
-						);
-						return result;
-					},
-				);
-
-				if (updates.length === 0) {
-					vscode.window.showInformationMessage("All dependencies are up to date.");
-					return;
-				}
-
-				// Classify packages by bump type
-				const byBump: Record<BumpType, Update[]> = {
-					patch: [],
-					minor: [],
-					major: [],
-				};
-				for (const update of updates) {
-					byBump[update.bump].push(update);
-				}
-
-				// Build grouped items with selectable group headers
-				const pickItems: DepQuickPickItem[] = [];
-				const addGroup = (bump: BumpType, label: string) => {
-					if (byBump[bump].length === 0) {
-						return;
-					}
-					const count = byBump[bump].length;
-					pickItems.push({
-						label,
-						kind: vscode.QuickPickItemKind.Separator,
-					});
-					pickItems.push({
-						label: `Select all \`${bump}\``,
-						description: `${count} ${count === 1 ? "package" : "packages"}`,
-						iconPath: bumpIcon(bump),
-						isGroupHeader: true,
-						groupKey: bump,
-					});
-					for (const update of byBump[bump]) {
-						pickItems.push({
-							label: update.name,
-							description: `${update.current} → ${update.latest} · ${bump}`,
-							iconPath: bumpIcon(bump),
-							depName: update.name,
-							groupKey: bump,
-						});
-					}
-				};
-				addGroup("patch", "Patch");
-				addGroup("minor", "Minor");
-				addGroup("major", "Major");
-
-				const selectedDeps = await showDependencyPicker(
-					pickItems,
-					`Select dependencies to update (${pm}${useMise ? " via mise" : ""})`,
-				);
-
-				if (!selectedDeps || selectedDeps.length === 0) {
-					vscode.window.showInformationMessage("No dependencies selected for update.");
-					return;
-				}
-
-				// Snapshot original content so we can roll back if the update or install fails
-				const originalContent = fs.readFileSync(packageJsonPath, "utf-8");
-
-				// Build install command — use full mise path when detected
-				const command = useMise ? (misePath as string) : pm;
-				const args = useMise ? ["exec", "--", pm, "install"] : ["install"];
-
-				try {
-					await applyUpdates(
-						rootPath,
-						selectedDeps.map((dep) => dep.depName!),
-					);
-					await vscode.window.withProgress(
-						{
-							location: vscode.ProgressLocation.Notification,
-							title: `Updating with ${pm}${useMise ? " (mise)" : ""}...`,
-							cancellable: false,
-						},
-						(progress) =>
-							new Promise<void>((resolve, reject) => {
-								outputChannel.clear();
-								outputChannel.show(true);
-								outputChannel.appendLine(`Running: ${command} ${args.join(" ")}\n`);
-
-								const child = spawn(command, args, {
-									cwd: rootPath,
-									shell: true,
-								});
-
-								child.stdout.on("data", (data: Buffer) => {
-									outputChannel.append(data.toString());
-								});
-								child.stderr.on("data", (data: Buffer) => {
-									outputChannel.append(data.toString());
-								});
-								child.on("close", (code) => {
-									if (code !== 0) {
-										reject(new Error(`Exit code ${code}`));
-									} else {
-										progress.report({ increment: 100, message: "Done." });
-										resolve();
-									}
-								});
-								child.on("error", reject);
-							}),
-					);
-					vscode.window.showInformationMessage(
-						`Dependencies updated successfully (${pm}${useMise ? " via mise" : ""}).`,
-					);
-				} catch (installError: any) {
-					// Roll back package.json — the install never completed
-					fs.writeFileSync(packageJsonPath, originalContent, "utf-8");
-					vscode.window.showErrorMessage(
-						`Update failed: ${installError.message}. package.json has been restored. See the "Update Dependencies" output panel for details.`,
-					);
-				}
-			} catch (error: any) {
+	context.subscriptions.push(
+		vscode.commands.registerCommand("update-npm-dependencies.updateDependencies", () =>
+			updateDependencies(outputChannel).catch((error: Error) => {
 				vscode.window.showErrorMessage("Error: " + error.message);
-			}
-		},
+			}),
+		),
 	);
-
-	context.subscriptions.push(disposable);
 
 	// Lets the test suite exercise the webpack bundle, not just the tsc output
 	return { findUpdates, applyUpdates };

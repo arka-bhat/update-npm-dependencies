@@ -31,8 +31,10 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - [x] Replace the sample test with tests for classification (grouping tests come with step 3, where grouping logic changes)
 
 ## 3. Toolchain group
-- [ ] `packageManager` update shown in its own "Toolchain" group at the top, not covered by the Select-all toggles
-- [ ] When mise is detected: add outdated mise tools (`mise outdated --json`) to the same group; apply with mise's own bump command (confirm exact command while building)
+- [x] `packageManager` update shown in its own "Toolchain" group at the top, not covered by the Select-all toggles (current version read past any corepack `+sha512…` suffix)
+- [x] When mise is detected: tools pinned in the project's own mise config with a newer release (`mise outdated --bump --json`) join the Toolchain group; global mise config is ignored. Applied with `mise upgrade --bump <tools>` before the install, so the install uses the new versions
+- [x] A failed update or install restores `package.json` and the touched mise config files
+- [x] Tests: mise output parsing, picker grouping, corepack hash. Verified against real mise (dry run) on a scratch project
 - Known: corepack's `+sha512…` hash is dropped on update
 
 ## 4. Cooldown
