@@ -1,101 +1,21 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { run } from "npm-check-updates";
-import { spawn, exec } from "child_process";
-
-type PackageManager = "npm" | "yarn" | "pnpm" | "bun";
-type BumpType = "major" | "minor" | "patch";
+import { spawn } from "child_process";
+import {
+	type BumpType,
+	type Update,
+	applyUpdates,
+	detectMise,
+	detectPackageManager,
+	findUpdates,
+} from "./deps";
 
 type DepQuickPickItem = vscode.QuickPickItem & {
 	depName?: string;
 	groupKey?: BumpType;
 	isGroupHeader?: boolean;
 };
-
-function detectPackageManager(rootPath: string): PackageManager {
-	if (
-		fs.existsSync(path.join(rootPath, "bun.lockb")) ||
-		fs.existsSync(path.join(rootPath, "bun.lock"))
-	) {
-		return "bun";
-	}
-	if (fs.existsSync(path.join(rootPath, "pnpm-lock.yaml"))) {
-		return "pnpm";
-	}
-	if (fs.existsSync(path.join(rootPath, "yarn.lock"))) {
-		return "yarn";
-	}
-	if (fs.existsSync(path.join(rootPath, "package-lock.json"))) {
-		return "npm";
-	}
-	try {
-		const pkgJson = JSON.parse(fs.readFileSync(path.join(rootPath, "package.json"), "utf-8"));
-		if (typeof pkgJson.packageManager === "string") {
-			const pm = pkgJson.packageManager.split("@")[0] as PackageManager;
-			if (["npm", "yarn", "pnpm", "bun"].includes(pm)) {
-				return pm;
-			}
-		}
-	} catch {}
-	return "npm";
-}
-
-/**
- * Returns the full path to the mise binary if the project uses mise, otherwise false.
- * Checks known install locations directly rather than relying on shell PATH, since the
- * extension host process may not have the user's full shell environment.
- */
-async function detectMise(rootPath: string): Promise<string | false> {
-	const hasMiseConfig =
-		fs.existsSync(path.join(rootPath, "mise.toml")) ||
-		fs.existsSync(path.join(rootPath, ".mise.toml")) ||
-		fs.existsSync(path.join(rootPath, ".tool-versions")) ||
-		fs.existsSync(path.join(rootPath, "tool-versions")) ||
-		fs.existsSync(path.join(rootPath, "mise"));
-	if (!hasMiseConfig) {
-		return false;
-	}
-
-	// Check known install locations before falling back to PATH lookup
-	const candidates: string[] = [
-		process.env.HOME ? `${process.env.HOME}/.local/bin/mise` : "",
-		"/opt/homebrew/bin/mise",
-		"/usr/local/bin/mise",
-	].filter(Boolean);
-
-	for (const candidate of candidates) {
-		if (fs.existsSync(candidate)) {
-			return candidate;
-		}
-	}
-
-	// Fall back to which/where via the process environment
-	return new Promise((resolve) => {
-		const whichCmd = process.platform === "win32" ? "where mise" : "which mise";
-		exec(whichCmd, { env: process.env }, (err, stdout) => {
-			const found = !err && stdout.trim().length > 0;
-			resolve(found ? stdout.trim().split("\n")[0] : false);
-		});
-	});
-}
-
-function getBumpType(currentVersion: string, newVersion: string): BumpType {
-	const clean = (v: string) => v.replace(/^[^0-9]*/, "");
-	const parts = (v: string) =>
-		clean(v)
-			.split(".")
-			.map((n) => parseInt(n, 10) || 0);
-	const [curMajor, curMinor] = parts(currentVersion);
-	const [newMajor, newMinor] = parts(newVersion);
-	if (newMajor > curMajor) {
-		return "major";
-	}
-	if (newMinor > curMinor) {
-		return "minor";
-	}
-	return "patch";
-}
 
 function bumpIcon(bump: BumpType): vscode.ThemeIcon {
 	switch (bump) {
@@ -236,50 +156,38 @@ export function activate(context: vscode.ExtensionContext) {
 				]);
 				const useMise = misePath !== false;
 
-				const updatedDependencies = await vscode.window.withProgress(
+				const updates = await vscode.window.withProgress(
 					{
 						location: vscode.ProgressLocation.Notification,
 						title: "Checking for new dependency versions...",
 						cancellable: false,
 					},
 					async (progress) => {
-						const result: Record<string, string> = (await run({
-							packageFile: packageJsonPath,
-							jsonUpgraded: true,
-							upgrade: false,
-						})) as Record<string, string>;
+						const result = await findUpdates(rootPath);
 						progress.report({
 							increment: 100,
 							message: "Dependencies check complete.",
 						});
 						vscode.window.showInformationMessage(
-							`Found ${Object.keys(result).length} outdated packages`,
+							`Found ${result.length} outdated packages`,
 						);
 						return result;
 					},
 				);
 
-				if (Object.keys(updatedDependencies).length === 0) {
+				if (updates.length === 0) {
 					vscode.window.showInformationMessage("All dependencies are up to date.");
 					return;
 				}
 
-				// Read current versions for bump classification
-				const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-				const allDeps: Record<string, string> = {
-					...packageJson.dependencies,
-					...packageJson.devDependencies,
-				};
-
 				// Classify packages by bump type
-				const byBump: Record<BumpType, string[]> = {
+				const byBump: Record<BumpType, Update[]> = {
 					patch: [],
 					minor: [],
 					major: [],
 				};
-				for (const dep of Object.keys(updatedDependencies)) {
-					const bump = getBumpType(allDeps[dep] ?? "0.0.0", updatedDependencies[dep]);
-					byBump[bump].push(dep);
+				for (const update of updates) {
+					byBump[update.bump].push(update);
 				}
 
 				// Build grouped items with selectable group headers
@@ -300,12 +208,12 @@ export function activate(context: vscode.ExtensionContext) {
 						isGroupHeader: true,
 						groupKey: bump,
 					});
-					for (const dep of byBump[bump]) {
+					for (const update of byBump[bump]) {
 						pickItems.push({
-							label: dep,
-							description: `${allDeps[dep] ?? "?"} → ${updatedDependencies[dep]} · ${bump}`,
+							label: update.name,
+							description: `${update.current} → ${update.latest} · ${bump}`,
 							iconPath: bumpIcon(bump),
-							depName: dep,
+							depName: update.name,
 							groupKey: bump,
 						});
 					}
@@ -324,25 +232,18 @@ export function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 
-				// Snapshot original content so we can roll back if the install fails
+				// Snapshot original content so we can roll back if the update or install fails
 				const originalContent = fs.readFileSync(packageJsonPath, "utf-8");
-
-				// Write updated versions to package.json
-				for (const dep of selectedDeps) {
-					const name = dep.depName ?? dep.label;
-					if (packageJson.dependencies?.[name]) {
-						packageJson.dependencies[name] = updatedDependencies[name];
-					} else if (packageJson.devDependencies?.[name]) {
-						packageJson.devDependencies[name] = updatedDependencies[name];
-					}
-				}
-				fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2), "utf-8");
 
 				// Build install command — use full mise path when detected
 				const command = useMise ? (misePath as string) : pm;
 				const args = useMise ? ["exec", "--", pm, "install"] : ["install"];
 
 				try {
+					await applyUpdates(
+						rootPath,
+						selectedDeps.map((dep) => dep.depName!),
+					);
 					await vscode.window.withProgress(
 						{
 							location: vscode.ProgressLocation.Notification,
@@ -394,6 +295,9 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(disposable);
+
+	// Lets the test suite exercise the webpack bundle, not just the tsc output
+	return { findUpdates, applyUpdates };
 }
 
 export function deactivate() {}

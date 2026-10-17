@@ -19,9 +19,12 @@ Each step's verification: `npm run compile`, `npm run lint`, `npm test`, plus th
 - Note: webpack warns about `createRequire().resolve` inside ncu; it only locates installed packages' `package.json` and works in a bundle. Covered by the bundle smoke test in step 2
 
 ## 1. Correct `package.json` writes (bug fixes)
-- [ ] Let npm-check-updates write the file (`upgrade: true, filter: selected`) and delete the `JSON.stringify` write loop
+- [x] Let npm-check-updates write the file (`upgrade: true, filter: selected`) and delete the `JSON.stringify` write loop
 - Fixes: formatting (tabs, one-line objects, final newline) being rewritten; `packageManager` and `optionalDependencies` updates being silently dropped
-- Test: fixture with tabs + `packageManager` + `optionalDependencies` round-trips correctly
+- [x] Test: fixture with tabs + `packageManager` + `optionalDependencies` round-trips correctly (offline, via `registryType: "json"`)
+- [x] Found by the new bundle test: webpack can't bundle ncu 23 (its pre-bundled chunks import each other in a cycle → `... is not a function` at runtime). ncu is now a webpack external shipped in the VSIX (no runtime deps; only its `.js` files are packaged)
+- [x] `tasks/` and `PLAN.md` excluded from the VSIX
+- Logic not tied to VS Code moved to `src/deps.ts`
 
 ## 2. 0.x version classification + real tests
 - [ ] Classify by caret-range rules: an update outside `^current` is major (`0.3 → 0.4` and `0.0.3 → 0.0.4` are major)
