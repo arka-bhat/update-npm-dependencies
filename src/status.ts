@@ -43,7 +43,6 @@ export function startOutdatedIndicator(
 	const results = new Map<string, Update[]>();
 	const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
 	statusBar.command = "update-npm-dependencies.updateDependencies";
-	statusBar.tooltip = "Dependency updates available. Click to choose which to install.";
 	const hint = vscode.window.createTextEditorDecorationType({
 		after: { color: new vscode.ThemeColor("editorInlayHint.foreground"), margin: "0 0 0 2em" },
 	});
@@ -55,6 +54,11 @@ export function startOutdatedIndicator(
 	const render = () => {
 		const updates = [...results.values()].flat();
 		statusBar.text = `$(package) ${updates.length} outdated`;
+		const counts = (["patch", "minor", "major"] as const)
+			.map((bump) => [updates.filter((u) => u.bump === bump).length, bump] as const)
+			.filter(([count]) => count > 0)
+			.map(([count, bump]) => `${count} ${bump}`);
+		statusBar.tooltip = `Dependency updates available (${counts.join(", ")}). Click to choose which to install.`;
 		if (updates.length > 0) {
 			statusBar.show();
 		} else {
