@@ -44,8 +44,9 @@ const npmButton: vscode.QuickInputButton = {
 
 /**
  * Builds the picker rows: a Toolchain group first (package manager and mise pins, no
- * Select-all toggle), then Patch, Minor and Major groups, each with a Select-all row, and
- * last an Overridden group (no toggle) for dependencies forced by overrides / resolutions.
+ * Select-all toggle), then Patch, Minor and Major groups, each with a Select-all row, then
+ * Pinned (exact versions) and Overridden (forced by overrides / resolutions), neither of
+ * which has a toggle.
  */
 export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 	const row = (update: Update, groupKey?: BumpType): DepQuickPickItem => {
@@ -79,7 +80,7 @@ export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 		["minor", "Minor"],
 		["major", "Major"],
 	] as const;
-	const dependencies = updates.filter((u) => !u.toolchain && !u.overriddenTo);
+	const dependencies = updates.filter((u) => !u.toolchain && !u.overriddenTo && !u.pinned);
 	for (const [bump, label] of groups) {
 		const group = dependencies.filter((u) => u.bump === bump);
 		if (group.length === 0) {
@@ -94,6 +95,15 @@ export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 			groupKey: bump,
 		});
 		items.push(...group.map((u) => row(u, bump)));
+	}
+	// Outside the Select-all toggles so a deliberate exact pin is only changed on purpose; safest first
+	const order = groups.map(([bump]) => bump as BumpType);
+	const pinned = updates
+		.filter((u) => !u.toolchain && !u.overriddenTo && u.pinned)
+		.sort((a, b) => order.indexOf(a.bump) - order.indexOf(b.bump));
+	if (pinned.length > 0) {
+		items.push({ label: "Pinned", kind: vscode.QuickPickItemKind.Separator });
+		items.push(...pinned.map((u) => row(u)));
 	}
 	// Last and outside the Select-all toggles: while the override stands, updating changes nothing installed
 	const overridden = updates.filter((u) => !u.toolchain && u.overriddenTo);

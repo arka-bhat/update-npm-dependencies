@@ -357,6 +357,20 @@ suite("buildPickItems", () => {
 		assert.match(axios?.description ?? "", /forced to 1\.16\.1 by overrides/);
 	});
 
+	test("pinned dependencies get their own group, safest first, outside Select all", () => {
+		const items = buildPickItems([
+			{ ...update("react", "major"), pinned: true },
+			{ ...update("flash-list", "minor"), pinned: true },
+			{ ...update("axios", "minor"), pinned: true, overriddenTo: "1.16.1" },
+			update("zod", "minor"),
+		]);
+		assert.deepStrictEqual(
+			items.map((i) => (i.kind === vscode.QuickPickItemKind.Separator ? `--${i.label}` : i.label)),
+			["--Minor", "Select all `minor`", "zod", "--Pinned", "flash-list", "react", "--Overridden", "axios"],
+		);
+		assert.strictEqual(items.find((i) => i.label === "react")?.groupKey, undefined);
+	});
+
 	test("npm rows get a link button, mise tools don't", () => {
 		const items = buildPickItems([update("react", "major"), update("node", "major", "mise")]);
 		const buttons = (name: string) => items.find((i) => i.label === name)?.buttons?.length;

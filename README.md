@@ -12,7 +12,7 @@
     - Minor (yellow) — new features, backwards-compatible
     - Major (red) — breaking changes, including `0.x` minor bumps (e.g. `0.3 → 0.4`), which semver treats as breaking
 - **Toolchain updates** — a newer version of the package manager in your `packageManager` field, and newer tools pinned in your project's mise config, are listed in their own **Toolchain** group at the top
-- **Pins and overrides** — exact versions (`"react": "19.2.0"`) are marked `pinned`, and packages forced by `overrides` / `resolutions` are listed in a separate **Overridden** group at the end (outside the Select-all toggles), since updating them alone changes nothing. Packages in pnpm's `updateConfig.ignoreDependencies` are never offered, and the picker prompt shows how many ignore rules apply
+- **Pins and overrides** — exact versions (`"react": "19.2.0"`) go in a separate **Pinned** group so a deliberate pin is only changed on purpose, and packages forced by `overrides` / `resolutions` are listed in a separate **Overridden** group at the end (outside the Select-all toggles), since updating them alone changes nothing. Packages in pnpm's `updateConfig.ignoreDependencies` are never offered, and the picker prompt shows how many ignore rules apply
 - **Link to npm** — the button on each row opens the package's versions page on npm, where its repo and changelog are linked, without closing the picker
 - **Your formatting is kept** — only the version strings change in `package.json`; indentation, layout and key order stay as they were
 - **Monorepos** — npm, yarn, bun and pnpm workspaces are checked as a whole, including pnpm catalogs. A dependency used in several packages appears once and is updated everywhere
