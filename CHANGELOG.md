@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **npm link button** on each picker row; the picker stays open while you browse
 - **Settings** — `updateDependencies.cooldown` (skip freshly published versions), `.target` (latest / minor / patch), `.reject` (packages to ignore), `.peer` (peer-compatible versions only), `.backgroundCheck`
 - A project `.ncurc.json` is read too
+- Packages in pnpm's `updateConfig.ignoreDependencies` are never offered; exact-version pins are marked `pinned`, and packages forced by `overrides` / `resolutions` show `overridden to <version>`
 - **Test after updating** — when a `test` script exists, offer to run it and revert if it fails
 - **Status bar count and inline hints** for outdated dependencies, refreshed in the background
 
