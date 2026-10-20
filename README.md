@@ -75,6 +75,10 @@ The `mise` binary is located by checking common install paths (`~/.local/bin/mis
 - A workspace with a `package.json` file
 - Your package manager (`npm`, `yarn`, `pnpm`, or `bun`) accessible in your PATH
 
+## Known Limitations
+
+- A bun registry set only in `bunfig.toml` isn't used for the version check. Set it in `.npmrc` as well (bun reads both).
+
 ## Feedback and Contributions
 
 Issues and pull requests welcome on [GitHub](https://github.com/arka-bhat/update-npm-dependencies).
