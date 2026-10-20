@@ -76,6 +76,11 @@
 					"default": false,
 					"description": "Only offer versions compatible with the peer dependencies of your installed packages."
 				},
+				"updateDependencies.prerelease": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "Also offer pre-release versions (`-alpha`, `-beta`, `-rc`, …). Packages you already use a pre-release of get pre-release updates either way."
+				},
 				"updateDependencies.backgroundCheck": {
 					"type": "boolean",
 					"default": true,

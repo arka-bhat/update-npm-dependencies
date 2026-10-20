@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Monorepo support** — npm, yarn, bun and pnpm workspaces are checked as a whole, including pnpm catalogs; a dependency used in several packages appears once and is updated everywhere
 - **Several projects in one window** — with several workspace folders open, or one folder holding several projects in subfolders, you choose which project to check; a Back button in the dependency picker returns to the project list
 - **npm link button** on each picker row; the picker stays open while you browse
-- **Settings** — `updateDependencies.cooldown` (skip freshly published versions), `.target` (latest / minor / patch), `.reject` (packages to ignore), `.peer` (peer-compatible versions only), `.backgroundCheck`
+- **Settings** — `updateDependencies.cooldown` (skip freshly published versions), `.target` (latest / minor / patch), `.reject` (packages to ignore), `.peer` (peer-compatible versions only), `.prerelease` (offer pre-releases), `.backgroundCheck`
 - A project `.ncurc.json` is read too
 - Packages in pnpm's `updateConfig.ignoreDependencies` are never offered; exact-version pins go in a separate Pinned group, and packages forced by `overrides` / `resolutions` go in a separate Overridden group outside the Select-all toggles
 - **Test after updating** — when a `test` script exists, offer to run it and revert if it fails

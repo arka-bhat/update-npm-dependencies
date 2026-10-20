@@ -267,6 +267,9 @@ function ncuOptions(rootPath: string): RunOptions {
 	return {
 		target: config.get<"latest" | "minor" | "patch">("target", "latest"),
 		peer: config.get<boolean>("peer", false),
+		// Only passed when on: an explicit pre: false would stop ncu offering prereleases for
+		// packages already on one (e.g. 5.0.0-preview.3)
+		...(config.get<boolean>("prerelease", false) ? { pre: true } : {}),
 		// Left unset when empty so ncu falls back to the package manager's own release-age setting
 		...(cooldown ? { cooldown: /^\d+$/.test(cooldown) ? Number(cooldown) : cooldown } : {}),
 		...rc,

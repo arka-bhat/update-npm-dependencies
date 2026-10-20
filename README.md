@@ -40,6 +40,7 @@
 | `updateDependencies.target`          | `latest`  | `latest` offers every update, `minor` at most minor updates, `patch` patch updates only.                                                                                                                                                    |
 | `updateDependencies.reject`          | `[]`      | Packages never offered for update. Accepts names, wildcards such as `@types/*`, or `/regex/`.                                                                                                                                               |
 | `updateDependencies.peer`            | `false`   | Only offer versions compatible with the peer dependencies of your installed packages.                                                                                                                                                      |
+| `updateDependencies.prerelease`      | `false`   | Also offer pre-release versions (`-alpha`, `-beta`, `-rc`, …). Packages you already use a pre-release of get pre-release updates either way. |
 | `updateDependencies.backgroundCheck` | `true`    | Check in the background on startup and when `package.json` is saved, for the status bar count and inline hints. Contacts the npm registry.                                                                                                   |
 
 A project `.ncurc.json` (the [npm-check-updates](https://github.com/raineorshine/npm-check-updates) config file) is also read, and its options take precedence over these settings.
