@@ -19,7 +19,85 @@ export type Update = {
 	files: string[];
 	/** Where the version lives, for the picker: "packageManager", "mise.toml", "apps/web, root" */
 	where?: string;
+	/** The current version is exact ("19.2.0", no ^ or ~), usually a deliberate pin */
+	pinned?: boolean;
+	/** Version forced by overrides / resolutions; updating the dependency alone changes nothing */
+	overriddenTo?: string;
 };
+
+const EXACT_VERSION = /^\d+\.\d+\.\d+(-[\w.]+)?$/;
+
+/** Lines under a top-level YAML key, up to the next top-level key. */
+function yamlBlock(text: string, key: string): string[] {
+	const lines = text.split(/\r?\n/);
+	const start = lines.findIndex((line) => new RegExp(`^${key}\\s*:\\s*$`).test(line));
+	const block: string[] = [];
+	for (const line of start === -1 ? [] : lines.slice(start + 1)) {
+		if (/^\S/.test(line)) {
+			break;
+		}
+		block.push(line);
+	}
+	return block;
+}
+
+function readText(file: string): string {
+	try {
+		return fs.readFileSync(file, "utf-8");
+	} catch {
+		return "";
+	}
+}
+
+function readPackageJson(rootPath: string): Record<string, any> {
+	try {
+		return JSON.parse(readText(path.join(rootPath, "package.json")));
+	} catch {
+		return {};
+	}
+}
+
+/**
+ * Packages pnpm is told never to update (`updateConfig.ignoreDependencies`, in package.json
+ * under "pnpm" or in pnpm-workspace.yaml). npm-check-updates doesn't read this setting.
+ */
+export function pnpmIgnoredDependencies(rootPath: string): string[] {
+	const fromJson = readPackageJson(rootPath).pnpm?.updateConfig?.ignoreDependencies;
+	// ponytail: list items anywhere under updateConfig:, its only list-valued key
+	const fromYaml = yamlBlock(readText(path.join(rootPath, "pnpm-workspace.yaml")), "updateConfig")
+		.map((line) => line.match(/^\s+-\s*['"]?([^'"#\s]+)/)?.[1])
+		.filter((name): name is string => !!name);
+	return [...(Array.isArray(fromJson) ? fromJson : []), ...fromYaml];
+}
+
+/**
+ * Versions forced by npm/pnpm `overrides` or yarn `resolutions` in the root package.json,
+ * or `overrides:` in pnpm-workspace.yaml, keyed by package name.
+ */
+export function readOverrides(rootPath: string): Record<string, string> {
+	const forced: Record<string, string> = {};
+	const add = (entries: unknown) => {
+		for (const [key, value] of Object.entries((entries ?? {}) as Record<string, unknown>)) {
+			// yarn writes "**/react"; a nested npm override keeps its own version under "."
+			const version =
+				typeof value === "string" ? value : (value as Record<string, unknown> | null)?.["."];
+			if (typeof version === "string") {
+				forced[key.replace(/^\*\*\//, "")] = version;
+			}
+		}
+	};
+	const pkg = readPackageJson(rootPath);
+	add(pkg.overrides);
+	add(pkg.pnpm?.overrides);
+	add(pkg.resolutions);
+	for (const line of yamlBlock(readText(path.join(rootPath, "pnpm-workspace.yaml")), "overrides")) {
+		const match = line.match(/^\s+['"]?([^'":]+)['"]?\s*:\s*['"]?([^'"\s#]+)/);
+		if (match) {
+			forced[match[1]] = match[2];
+		}
+	}
+	return forced;
+}
 
 const BUMP_ORDER: BumpType[] = ["patch", "minor", "major"];
 
@@ -284,12 +362,17 @@ export async function findUpdates(rootPath: string, options: RunOptions = {}): P
 
 	const label = (file: string) =>
 		file.endsWith(".yaml") ? "catalog" : path.relative(rootPath, path.dirname(file)) || "root";
+	const overrides = readOverrides(rootPath);
 	for (const update of updates.values()) {
 		update.where = update.toolchain
 			? "packageManager"
 			: monorepo
 				? update.files.map(label).join(", ")
 				: undefined;
+		if (!update.toolchain) {
+			update.pinned = update.current.split(", ").every((v) => EXACT_VERSION.test(v));
+			update.overriddenTo = overrides[update.name];
+		}
 	}
 	return [...updates.values()];
 }

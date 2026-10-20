@@ -12,7 +12,9 @@ import {
 	getBumpType,
 	lockfiles,
 	parseMiseOutdated,
+	pnpmIgnoredDependencies,
 	readNcurc,
+	readOverrides,
 	snapshot,
 } from "../deps";
 import { buildPickItems } from "../extension";
@@ -94,6 +96,47 @@ suite("findUpdates", () => {
 		});
 		const pnpm = (await findUpdates(dir, options)).find((u) => u.name === "pnpm");
 		assert.strictEqual(pnpm?.current, "9.0.0");
+	});
+});
+
+suite("pins and overrides", () => {
+	test("pnpm ignoreDependencies is read from package.json and pnpm-workspace.yaml", () => {
+		const { dir } = fixture({
+			"package.json": '{ "pnpm": { "updateConfig": { "ignoreDependencies": ["react"] } } }',
+			"pnpm-workspace.yaml":
+				"packages:\n  - packages/*\nupdateConfig:\n  ignoreDependencies:\n    - '@types/*'\n    - expo\ncatalog:\n  - nope\n",
+		});
+		assert.deepStrictEqual(pnpmIgnoredDependencies(dir), ["react", "@types/*", "expo"]);
+	});
+
+	test("overrides and resolutions are collected by package name", () => {
+		const { dir } = fixture({
+			"package.json": JSON.stringify({
+				overrides: { semver: "7.0.0", foo: { ".": "1.0.0", bar: "2.0.0" } },
+				resolutions: { "**/ms": "2.0.0" },
+			}),
+			"pnpm-workspace.yaml": "overrides:\n  lodash: 4.17.21\n",
+		});
+		assert.deepStrictEqual(readOverrides(dir), {
+			semver: "7.0.0",
+			foo: "1.0.0",
+			ms: "2.0.0",
+			lodash: "4.17.21",
+		});
+	});
+
+	test("updates note exact pins and overrides", async () => {
+		const { dir, options } = fixture({
+			"package.json": JSON.stringify({
+				dependencies: { semver: "6.0.0", ms: "^1.0.0" },
+				overrides: { ms: "1.0.0" },
+			}),
+		});
+		const notes = (await findUpdates(dir, options)).map((u) => [u.name, u.pinned, u.overriddenTo]);
+		assert.deepStrictEqual(notes, [
+			["semver", true, undefined],
+			["ms", false, "1.0.0"],
+		]);
 	});
 });
 

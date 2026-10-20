@@ -14,6 +14,7 @@ import {
 	findProjects,
 	findUpdates,
 	lockfiles,
+	pnpmIgnoredDependencies,
 	readNcurc,
 	snapshot,
 } from "./deps";
@@ -49,7 +50,15 @@ export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 	const row = (update: Update, groupKey?: BumpType): DepQuickPickItem => {
 		return {
 			label: update.name,
-			description: `${update.current} → ${update.latest} · ${update.bump}${update.where ? ` · ${update.where}` : ""}`,
+			description: [
+				`${update.current} → ${update.latest}`,
+				update.bump,
+				update.where,
+				update.pinned && "pinned",
+				update.overriddenTo && `overridden to ${update.overriddenTo}`,
+			]
+				.filter(Boolean)
+				.join(" · "),
 			iconPath: update.toolchain ? new vscode.ThemeIcon("tools") : bumpIcon(update.bump),
 			// mise tools (node, python, …) aren't npm packages
 			buttons: update.toolchain === "mise" ? [] : [npmButton],
@@ -235,13 +244,19 @@ function runCommand(
 function ncuOptions(rootPath: string): RunOptions {
 	const config = vscode.workspace.getConfiguration("updateDependencies", vscode.Uri.file(rootPath));
 	const cooldown = config.get<string>("cooldown", "");
+	const rc = readNcurc(rootPath);
+	const list = (value: unknown) => (Array.isArray(value) ? value : value ? [value] : []);
 	return {
 		target: config.get<"latest" | "minor" | "patch">("target", "latest"),
-		reject: config.get<string[]>("reject", []),
 		peer: config.get<boolean>("peer", false),
 		// Left unset when empty so ncu falls back to the package manager's own release-age setting
 		...(cooldown ? { cooldown: /^\d+$/.test(cooldown) ? Number(cooldown) : cooldown } : {}),
-		...readNcurc(rootPath),
+		...rc,
+		// pnpm's ignoreDependencies always applies, on top of the rc's or the setting's reject list
+		reject: [
+			...list(rc.reject ?? config.get<string[]>("reject", [])),
+			...pnpmIgnoredDependencies(rootPath),
+		],
 	};
 }
 
