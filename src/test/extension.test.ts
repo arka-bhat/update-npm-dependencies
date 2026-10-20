@@ -343,6 +343,20 @@ suite("buildPickItems", () => {
 		assert.strictEqual(items.find((i) => i.label === "pnpm")?.groupKey, undefined);
 	});
 
+	test("overridden dependencies get their own last group, outside Select all", () => {
+		const items = buildPickItems([
+			{ ...update("axios", "minor"), overriddenTo: "1.16.1" },
+			update("zod", "minor"),
+		]);
+		assert.deepStrictEqual(
+			items.map((i) => (i.kind === vscode.QuickPickItemKind.Separator ? `--${i.label}` : i.label)),
+			["--Minor", "Select all `minor`", "zod", "--Overridden", "axios"],
+		);
+		const axios = items.find((i) => i.label === "axios");
+		assert.strictEqual(axios?.groupKey, undefined);
+		assert.match(axios?.description ?? "", /forced to 1\.16\.1 by overrides/);
+	});
+
 	test("npm rows get a link button, mise tools don't", () => {
 		const items = buildPickItems([update("react", "major"), update("node", "major", "mise")]);
 		const buttons = (name: string) => items.find((i) => i.label === name)?.buttons?.length;

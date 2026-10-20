@@ -37,15 +37,16 @@ function bumpIcon(bump: BumpType): vscode.ThemeIcon {
 	}
 }
 
-/**
- * Builds the picker rows: a Toolchain group first (package manager and mise pins, no
- * Select-all toggle), then Patch, Minor and Major groups, each with a Select-all row.
- */
 const npmButton: vscode.QuickInputButton = {
 	iconPath: new vscode.ThemeIcon("link-external"),
 	tooltip: "Open on npm",
 };
 
+/**
+ * Builds the picker rows: a Toolchain group first (package manager and mise pins, no
+ * Select-all toggle), then Patch, Minor and Major groups, each with a Select-all row, and
+ * last an Overridden group (no toggle) for dependencies forced by overrides / resolutions.
+ */
 export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 	const row = (update: Update, groupKey?: BumpType): DepQuickPickItem => {
 		return {
@@ -55,7 +56,7 @@ export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 				update.bump,
 				update.where,
 				update.pinned && "pinned",
-				update.overriddenTo && `overridden to ${update.overriddenTo}`,
+				update.overriddenTo && `forced to ${update.overriddenTo} by overrides`,
 			]
 				.filter(Boolean)
 				.join(" · "),
@@ -78,8 +79,9 @@ export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 		["minor", "Minor"],
 		["major", "Major"],
 	] as const;
+	const dependencies = updates.filter((u) => !u.toolchain && !u.overriddenTo);
 	for (const [bump, label] of groups) {
-		const group = updates.filter((u) => !u.toolchain && u.bump === bump);
+		const group = dependencies.filter((u) => u.bump === bump);
 		if (group.length === 0) {
 			continue;
 		}
@@ -92,6 +94,12 @@ export function buildPickItems(updates: Update[]): DepQuickPickItem[] {
 			groupKey: bump,
 		});
 		items.push(...group.map((u) => row(u, bump)));
+	}
+	// Last and outside the Select-all toggles: while the override stands, updating changes nothing installed
+	const overridden = updates.filter((u) => !u.toolchain && u.overriddenTo);
+	if (overridden.length > 0) {
+		items.push({ label: "Overridden", kind: vscode.QuickPickItemKind.Separator });
+		items.push(...overridden.map((u) => row(u)));
 	}
 	return items;
 }
@@ -350,9 +358,12 @@ async function updateProject(
 	vscode.window.showInformationMessage(`Found ${updates.length} outdated packages`);
 
 	const cooldown = options.cooldown ? ` · cooldown ${options.cooldown}` : "";
+	// Ignore rules (reject setting, .ncurc, pnpm ignoreDependencies); a wildcard counts once
+	const rules = (options.reject as unknown[]).length;
+	const ignored = rules > 0 ? ` · ${rules} ignored` : "";
 	const selected = await showDependencyPicker(
 		buildPickItems(updates),
-		`Select dependencies to update (${pm}${via}${cooldown})`,
+		`Select dependencies to update (${pm}${via}${cooldown}${ignored})`,
 		canGoBack ? project.name : undefined,
 	);
 	if (selected === BACK) {
