@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { spawn } from "child_process";
+import { type ChildProcess, spawn } from "child_process";
 import type { RunOptions } from "npm-check-updates";
 import {
 	type BumpType,
@@ -242,19 +242,32 @@ function runCommand(
 	cwd: string,
 ): Promise<void> {
 	output.appendLine(`Running: ${command} ${args.join(" ")}\n`);
-	return new Promise((resolve, reject) => {
-		const child =
-			process.platform === "win32"
-				? // npm/pnpm/yarn are .cmd shims on Windows and need cmd.exe; quote each part so paths with spaces survive
-					spawn([command, ...args].map((part) => `"${part}"`).join(" "), { cwd, shell: true })
-				: // No shell elsewhere: arguments (e.g. tool names from a mise config) are never shell-parsed
-					spawn(command, args, { cwd });
-		child.stdout.on("data", (data: Buffer) => output.append(data.toString()));
-		child.stderr.on("data", (data: Buffer) => output.append(data.toString()));
-		child.on("close", (code) =>
-			code === 0 ? resolve() : reject(new Error(`${command} exited with code ${code}`)),
-		);
-		child.on("error", reject);
+	const run = (child: ChildProcess) =>
+		new Promise<void>((resolve, reject) => {
+			child.stdout?.on("data", (data: Buffer) => output.append(data.toString()));
+			child.stderr?.on("data", (data: Buffer) => output.append(data.toString()));
+			child.on("close", (code) =>
+				code === 0 ? resolve() : reject(new Error(`${command} exited with code ${code}`)),
+			);
+			child.on("error", reject);
+		});
+
+	if (process.platform === "win32") {
+		// npm/pnpm/yarn are .cmd shims on Windows and need cmd.exe; quote each part so paths with spaces survive
+		const line = [command, ...args].map((part) => `"${part}"`).join(" ");
+		return run(spawn(line, { cwd, shell: true }));
+	}
+	// No shell first: arguments (e.g. tool names from a mise config) are never shell-parsed
+	return run(spawn(command, args, { cwd })).catch((error: NodeJS.ErrnoException) => {
+		if (error.code !== "ENOENT") {
+			throw error;
+		}
+		// VS Code started from the Dock may lack the shell's PATH, so tools set up in .zshrc
+		// (nvm, fnm, volta, `mise activate`) aren't found. Retry once through the user's shell.
+		const shell = process.env.SHELL || "/bin/sh";
+		const quote = (part: string) => `'${part.replace(/'/g, `'\\''`)}'`;
+		output.appendLine(`${command} isn't on VS Code's PATH; retrying through ${shell}\n`);
+		return run(spawn(shell, ["-ilc", [command, ...args].map(quote).join(" ")], { cwd }));
 	});
 }
 
