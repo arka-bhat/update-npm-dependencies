@@ -20,7 +20,10 @@ const extensionConfig = {
     libraryTarget: 'commonjs2'
   },
   externals: {
-    vscode: 'commonjs vscode' // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/
+    vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/
+    // npm-check-updates ships pre-bundled ESM whose internal chunks import each other in a cycle;
+    // webpack's rewrap breaks that at runtime, so load it natively via require(esm) instead
+    'npm-check-updates': 'commonjs npm-check-updates'
     // modules added here also need to be added in the .vscodeignore file
   },
   resolve: {

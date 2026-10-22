@@ -4,9 +4,9 @@
 	"description": "A Visual Studio Code extension to selectively update npm, yarn, pnpm, or bun dependencies to their latest versions.",
 	"publisher": "arka-bhattacharya",
 	"icon": "assets/extension-icon.png",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"engines": {
-		"vscode": "^1.100.0"
+		"vscode": "^1.123.0"
 	},
 	"homepage": "https://github.com/arka-bhat/update-npm-dependencies",
 	"repository": {
@@ -37,7 +37,57 @@
 				"command": "update-npm-dependencies.updateDependencies",
 				"title": "Update Node/Bun Dependencies"
 			}
-		]
+		],
+		"configuration": {
+			"title": "Update Node/Bun Dependencies",
+			"properties": {
+				"updateDependencies.cooldown": {
+					"type": "string",
+					"default": "",
+					"pattern": "^(\\d+[dhm]?)?$",
+					"patternErrorMessage": "Use a number of days, or a number followed by d, h or m (e.g. 7d, 12h, 30m).",
+					"markdownDescription": "Skip versions published more recently than this, e.g. `7d`, `12h` or `30m` (a plain number means days). Reduces the risk of installing a freshly published, compromised release. When empty, your package manager's own setting is used if present: npm `min-release-age`, yarn `npmMinimalAgeGate` or pnpm `minimumReleaseAge`."
+				},
+				"updateDependencies.target": {
+					"type": "string",
+					"default": "latest",
+					"enum": [
+						"latest",
+						"minor",
+						"patch"
+					],
+					"enumDescriptions": [
+						"Offer the latest version, including major updates.",
+						"Offer at most minor updates.",
+						"Offer patch updates only."
+					],
+					"description": "How far to look for newer versions."
+				},
+				"updateDependencies.reject": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"markdownDescription": "Packages never offered for update. Accepts names, wildcards such as `@types/*`, or `/regex/`."
+				},
+				"updateDependencies.peer": {
+					"type": "boolean",
+					"default": false,
+					"description": "Only offer versions compatible with the peer dependencies of your installed packages."
+				},
+				"updateDependencies.prerelease": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "Also offer pre-release versions (`-alpha`, `-beta`, `-rc`, …). Packages you already use a pre-release of get pre-release updates either way."
+				},
+				"updateDependencies.backgroundCheck": {
+					"type": "boolean",
+					"default": true,
+					"description": "Check for outdated dependencies on startup and whenever package.json is saved, and show the count in the status bar and hints next to outdated lines in package.json. Contacts the npm registry."
+				}
+			}
+		}
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run package",
@@ -52,20 +102,24 @@
 	},
 	"devDependencies": {
 		"@types/mocha": "^10.0.10",
-		"@types/node": "25.x",
-		"@types/semver": "^7.7.1",
-		"@types/vscode": "^1.100.0",
-		"@typescript-eslint/eslint-plugin": "^8.58.1",
-		"@typescript-eslint/parser": "^8.58.1",
-		"@vscode/test-cli": "^0.0.12",
-		"@vscode/test-electron": "^2.5.2",
-		"eslint": "^10.2.0",
-		"ts-loader": "^9.5.7",
-		"typescript": "^6.0.2",
-		"webpack": "^5.106.0",
-		"webpack-cli": "^7.0.2"
+		"@types/node": "26.x",
+		"@types/vscode": "^1.123.0",
+		"@typescript-eslint/eslint-plugin": "^8.71.2",
+		"@typescript-eslint/parser": "^8.71.2",
+		"@vscode/test-cli": "^0.0.15",
+		"@vscode/test-electron": "^3.1.0",
+		"eslint": "^10.13.0",
+		"ts-loader": "^9.6.2",
+		"typescript": "~6.0.3",
+		"webpack": "^5.112.0",
+		"webpack-cli": "^7.2.3"
 	},
 	"dependencies": {
-		"npm-check-updates": "^20.0.0"
+		"npm-check-updates": "^23.1.1"
+	},
+	"overrides": {
+		"@vscode/test-cli": {
+			"mocha": "^12.0.3"
+		}
 	}
 }
