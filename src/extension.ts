@@ -18,7 +18,7 @@ import {
 	readNcurc,
 	snapshot,
 } from "./deps";
-import { startOutdatedIndicator } from "./status";
+import { type Indicator, startOutdatedIndicator } from "./status";
 
 export type DepQuickPickItem = vscode.QuickPickItem & {
 	update?: Update;
@@ -306,9 +306,27 @@ function workspaceProjects(): Project[] {
 
 const BACK = Symbol("back");
 
+/**
+ * Everything outdated in one project: npm packages plus mise-pinned tools. The command and
+ * the status bar both use this, so the count they show can't differ.
+ */
+async function checkProject(rootPath: string, output: vscode.OutputChannel): Promise<Update[]> {
+	const misePath = await detectMise(rootPath);
+	const [packageUpdates, miseUpdates] = await Promise.all([
+		findUpdates(rootPath, ncuOptions(rootPath)),
+		misePath
+			? findMiseUpdates(misePath, rootPath).catch((error: Error) => {
+					output.appendLine(`Could not check mise tools: ${error.message}`);
+					return [];
+				})
+			: [],
+	]);
+	return [...packageUpdates, ...miseUpdates];
+}
+
 async function updateDependencies(
 	output: vscode.OutputChannel,
-	refresh: (rootPath: string) => Promise<void>,
+	indicator: Indicator,
 ): Promise<void> {
 	const projects = workspaceProjects();
 	if (projects.length === 0) {
@@ -333,7 +351,7 @@ async function updateDependencies(
 		if (!project) {
 			return;
 		}
-		const result = await updateProject(project, projects.length > 1, checked, output, refresh);
+		const result = await updateProject(project, projects.length > 1, checked, output, indicator);
 		if (result !== BACK) {
 			return;
 		}
@@ -345,7 +363,7 @@ async function updateProject(
 	canGoBack: boolean,
 	checked: Map<string, Update[]>,
 	output: vscode.OutputChannel,
-	refresh: (rootPath: string) => Promise<void>,
+	indicator: Indicator,
 ): Promise<typeof BACK | void> {
 	const rootPath = project.root;
 
@@ -354,28 +372,20 @@ async function updateProject(
 	const via = misePath ? " via mise" : "";
 	const options = ncuOptions(rootPath);
 
-	const check = () =>
-		vscode.window.withProgress(
+	let updates = checked.get(rootPath);
+	if (!updates) {
+		updates = await vscode.window.withProgress(
 			{
 				location: vscode.ProgressLocation.Notification,
 				title: "Checking for new dependency versions...",
 				cancellable: false,
 			},
-			async () => {
-				const [packageUpdates, miseUpdates] = await Promise.all([
-					findUpdates(rootPath, options),
-					misePath
-						? findMiseUpdates(misePath, rootPath).catch((error: Error) => {
-								output.appendLine(`Could not check mise tools: ${error.message}`);
-								return [];
-							})
-						: [],
-				]);
-				return [...packageUpdates, ...miseUpdates];
-			},
+			() => checkProject(rootPath, output),
 		);
-	const updates = checked.get(rootPath) ?? (await check());
-	checked.set(rootPath, updates);
+		checked.set(rootPath, updates);
+		// This result is fresher than whatever the status bar shows
+		indicator.publish(rootPath, updates);
+	}
 
 	if (updates.length === 0) {
 		vscode.window.showInformationMessage("All dependencies are up to date.");
@@ -445,7 +455,7 @@ async function updateProject(
 		return;
 	}
 	const after = snapshot(files);
-	void refresh(rootPath);
+	void indicator.refresh(rootPath);
 
 	const updated = `Dependencies updated successfully (${pm}${via}).`;
 	if (!hasTestScript(rootPath)) {
@@ -501,7 +511,7 @@ async function updateProject(
 		before.restore();
 		await progress("Reverting...", () => packageManager("install"));
 		vscode.window.showInformationMessage("Update reverted.");
-		void refresh(rootPath);
+		void indicator.refresh(rootPath);
 	});
 }
 
@@ -538,16 +548,16 @@ export function activate(context: vscode.ExtensionContext) {
 	const outputChannel = vscode.window.createOutputChannel("Update Dependencies");
 	context.subscriptions.push(outputChannel);
 
-	const refresh = startOutdatedIndicator(
+	const indicator = startOutdatedIndicator(
 		context,
 		outputChannel,
 		() => workspaceProjects().map((project) => project.root),
-		ncuOptions,
+		(rootPath) => checkProject(rootPath, outputChannel),
 	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("update-npm-dependencies.updateDependencies", () =>
-			updateDependencies(outputChannel, refresh).catch((error: Error) => {
+			updateDependencies(outputChannel, indicator).catch((error: Error) => {
 				vscode.window.showErrorMessage("Error: " + error.message);
 			}),
 		),

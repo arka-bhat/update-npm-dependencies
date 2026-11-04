@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import type { RunOptions } from "npm-check-updates";
-import { type Update, findUpdates } from "./deps";
+import type { Update } from "./deps";
 
 export type Hint = { line: number; text: string };
 
@@ -31,15 +30,23 @@ export function hintsFor(file: string, text: string, updates: Update[]): Hint[] 
 
 /**
  * Checks projects in the background and shows the result as a status bar count and as
- * faded hints after outdated lines in open package files. Returns a function that
- * re-checks one project (call it after updating).
+ * faded hints after outdated lines in open package files. `check` is the same check the
+ * command runs, so the count and the picker can't disagree. A project is re-checked when
+ * its package.json changes on disk, whoever changed it (editor, expo-doctor, git, ...).
  */
+export type Indicator = {
+	/** Re-check one project */
+	refresh: (rootPath: string) => Promise<void>;
+	/** Show a result the command just computed, instead of checking again */
+	publish: (rootPath: string, updates: Update[]) => void;
+};
+
 export function startOutdatedIndicator(
 	context: vscode.ExtensionContext,
 	output: vscode.OutputChannel,
 	projectRoots: () => string[],
-	ncuOptions: (rootPath: string) => RunOptions,
-): (rootPath: string) => Promise<void> {
+	findOutdated: (rootPath: string) => Promise<Update[]>,
+): Indicator {
 	const results = new Map<string, Update[]>();
 	const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
 	statusBar.command = "update-npm-dependencies.updateDependencies";
@@ -88,7 +95,7 @@ export function startOutdatedIndicator(
 		generations.set(rootPath, generation);
 		let updates: Update[] | undefined;
 		try {
-			updates = await findUpdates(rootPath, ncuOptions(rootPath));
+			updates = await findOutdated(rootPath);
 		} catch (error) {
 			output.appendLine(`Background check failed for ${rootPath}: ${(error as Error).message}`);
 		}
@@ -108,6 +115,16 @@ export function startOutdatedIndicator(
 		render();
 	};
 
+	const publish = (rootPath: string, updates: Update[]) => {
+		if (!enabled()) {
+			return;
+		}
+		// A background check that started earlier would otherwise land after this fresher result
+		generations.set(rootPath, (generations.get(rootPath) ?? 0) + 1);
+		results.set(rootPath, updates);
+		render();
+	};
+
 	const checkAll = () => {
 		results.clear();
 		render();
@@ -116,19 +133,34 @@ export function startOutdatedIndicator(
 		}
 	};
 
+	// Tools like expo-doctor, npm install and git rewrite package.json without the editor saving
+	// it, so watch the files on disk. One install can write the file several times: debounce.
+	const timers = new Map<string, NodeJS.Timeout>();
+	const onFileChange = (uri: vscode.Uri) => {
+		if (uri.fsPath.includes(`${path.sep}node_modules${path.sep}`)) {
+			return;
+		}
+		const rootPath = projectRoots().find((root) => uri.fsPath.startsWith(root + path.sep));
+		if (!rootPath) {
+			return;
+		}
+		clearTimeout(timers.get(rootPath));
+		timers.set(
+			rootPath,
+			setTimeout(() => void check(rootPath), 1500),
+		);
+	};
+	const watcher = vscode.workspace.createFileSystemWatcher("**/{package.json,pnpm-workspace.yaml}");
+	context.subscriptions.push(
+		watcher,
+		watcher.onDidChange(onFileChange),
+		watcher.onDidCreate(onFileChange),
+		watcher.onDidDelete(onFileChange),
+		{ dispose: () => timers.forEach((timer) => clearTimeout(timer)) },
+	);
+
 	context.subscriptions.push(
 		vscode.window.onDidChangeVisibleTextEditors(render),
-		vscode.workspace.onDidSaveTextDocument((document) => {
-			if (!/(^|[\\/])(package\.json|pnpm-workspace\.yaml)$/.test(document.fileName)) {
-				return;
-			}
-			const rootPath = projectRoots().find((root) =>
-				document.uri.fsPath.startsWith(root + path.sep),
-			);
-			if (rootPath) {
-				void check(rootPath);
-			}
-		}),
 		vscode.workspace.onDidChangeConfiguration((event) => {
 			if (event.affectsConfiguration("updateDependencies")) {
 				checkAll();
@@ -138,5 +170,5 @@ export function startOutdatedIndicator(
 	);
 
 	checkAll();
-	return check;
+	return { refresh: check, publish };
 }
