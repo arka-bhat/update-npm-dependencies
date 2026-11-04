@@ -21,8 +21,9 @@ const extensionConfig = {
   },
   externals: {
     vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/
-    // npm-check-updates ships pre-bundled ESM whose internal chunks import each other in a cycle;
-    // webpack's rewrap breaks that at runtime, so load it natively via require(esm) instead
+    // npm-check-updates ships pre-bundled ESM. Bundling it again with webpack broke it at runtime
+    // (seen with v23: its internal chunks import each other in a cycle; not retried on 22), so
+    // load it natively via require(esm) instead, which needs Node 20.19+ (VS Code 1.100+)
     'npm-check-updates': 'commonjs npm-check-updates'
     // modules added here also need to be added in the .vscodeignore file
   },

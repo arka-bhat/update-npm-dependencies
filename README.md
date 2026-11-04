@@ -72,7 +72,7 @@ The `mise` binary is located by checking common install paths (`~/.local/bin/mis
 
 ## Requirements
 
-- VS Code 1.123 or later
+- VS Code 1.100 or later
 - A workspace with a `package.json` file
 - Your package manager (`npm`, `yarn`, `pnpm`, or `bun`) accessible in your PATH
 

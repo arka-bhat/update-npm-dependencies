@@ -1,7 +1,7 @@
 # Plan: dependency refresh + new features
 
 Decisions so far:
-- Minimum VS Code (`engines.vscode`) → `^1.123.0`, the first release whose built-in Node (24.15) meets npm-check-updates 23's requirement.
+- Minimum VS Code (`engines.vscode`) stays `^1.100.0`. Originally planned `^1.123.0` for npm-check-updates 23 (needs Node 22.22.2+); revised on 2026-11-04 to ncu **22.2.9** (needs Node 20.19+, which VS Code 1.100 bundles). Verified by running the full suite inside VS Code 1.100.0 against `@types/vscode` 1.100.0. Steps below that mention 1.123 / ncu 23 are the original history.
 - Build every feature, one at a time. Stop after each for review; commit only when asked.
 - Work on a branch, not `main`.
 
@@ -96,6 +96,12 @@ Independent code review of the branch found, and these were fixed:
 - [x] Inline hints matched the first same-named key (e.g. a top-level `"prettier"` config). They now also match the current version
 - [x] pnpm catalog versions read from `catalog:` on, not an earlier `overrides:` entry; `mise.lock` included in rollback; Windows `where` output `\r` stripped; test API exposes only `findUpdates`
 - [x] Monorepo rows came back in varying order (ncu's order isn't stable); now sorted
+
+Revision (2026-11-04), after new advisories and a supply-chain review:
+- [x] ncu 23.1.1 (25 days old) → **22.2.9** (129 days old), pinned exactly; `engines.vscode` back to `^1.100.0`; `@types/vscode` pinned exactly to `1.100.0` (it had resolved to 1.140.0, which would let newer APIs slip in unnoticed)
+- [x] New advisories since Oct 17 (14 moderate, dev-only: `glob` <14.0.2 via `@vscode/test-cli`/mocha/c8, then `minimatch` <11.0.1; neither is in the VSIX). Fixed with `overrides` for `glob ^14.0.3` and `minimatch ^11.0.4`; `npm audit` 0, 288 registry signatures verified
+- [x] `VSCODE_TEST_VERSION=1.100.0 npm test` runs the suite on the minimum version (38 passing there and on latest stable)
+- Note: the long scratchpad path made VS Code 1.100 fail to start in a scratch copy (IPC socket path over 103 chars); not an issue in the repo itself
 
 Known limitations, not fixed:
 - yarn/bun catalogs (`workspaces.catalog` in package.json) aren't looked up; such entries show `?` as the current version

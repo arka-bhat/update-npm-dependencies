@@ -20,10 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- Requires VS Code 1.123 or later (was 1.100), for npm-check-updates 23
 - `0.x` updates that semver treats as breaking (`0.3 → 0.4`, `0.0.3 → 0.0.4`) are now classified as major
 - A failed update also restores the lockfile and any changed mise config, not just `package.json`
-- All dependencies updated; `npm audit` reports no vulnerabilities
+- Dependencies updated (npm-check-updates 20 → 22.2.9, pinned exactly) and the test tooling's `glob` and `minimatch` forced to patched versions; `npm audit` reports no vulnerabilities. The minimum VS Code stays 1.100
 
 ### Fixed
 
