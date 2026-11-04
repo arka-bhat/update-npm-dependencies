@@ -8,21 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **Toolchain group** — a newer package manager version for the `packageManager` field, and newer tools pinned in the project's mise config (applied with `mise upgrade --bump`), are listed in their own group at the top of the picker
+- **Toolchain group** — a newer package manager version for the `packageManager` field, and newer tools pinned in the project's mise config, are listed in their own group at the top of the picker
 - **Monorepo support** — npm, yarn, bun and pnpm workspaces are checked as a whole, including pnpm catalogs; a dependency used in several packages appears once and is updated everywhere
 - **Several projects in one window** — with several workspace folders open, or one folder holding several projects in subfolders, you choose which project to check; a Back button in the dependency picker returns to the project list
 - **npm link button** on each picker row; the picker stays open while you browse
 - **Settings** — `updateDependencies.cooldown` (skip freshly published versions), `.target` (latest / minor / patch), `.reject` (packages to ignore), `.peer` (peer-compatible versions only), `.prerelease` (offer pre-releases), `.backgroundCheck`
 - A project `.ncurc.json` is read too
-- Packages in pnpm's `updateConfig.ignoreDependencies` are never offered; exact-version pins go in a separate Pinned group, and packages forced by `overrides` / `resolutions` go in a separate Overridden group outside the Select-all toggles
+- Packages in pnpm's `updateConfig.ignoreDependencies` are never offered
+- **Pinned group** — exact-version dependencies are listed on their own, so you don't change a pin by accident
+- **Overridden group** — dependencies forced to a version by `overrides` / `resolutions` are listed separately, since updating them alone changes nothing
 - **Test after updating** — when a `test` script exists, offer to run it and revert if it fails
-- **Status bar count and inline hints** for outdated dependencies, refreshed in the background and whenever `package.json` changes on disk, even when another tool such as `expo-doctor` changes it
+- **Status bar count and inline hints** for outdated dependencies, refreshed in the background and whenever `package.json` changes on disk.
 
 ### Changed
 
 - `0.x` updates that semver treats as breaking (`0.3 → 0.4`, `0.0.3 → 0.0.4`) are now classified as major
-- A failed update also restores the lockfile and any changed mise config, not just `package.json`
-- Dependencies updated (npm-check-updates 20 → 22.2.9, pinned exactly) and the test tooling's `glob` and `minimatch` forced to patched versions; `npm audit` reports no vulnerabilities. The minimum VS Code stays 1.100
+- A failed update also restores the lockfile and any changed mise config, not just `package.jso
 
 ### Fixed
 
