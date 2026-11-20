@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -440,5 +441,14 @@ suite("bundle", () => {
 		const { dir, options } = fixture();
 		const names = (await api.findUpdates(dir, options)).map((u) => u.name).sort();
 		assert.deepStrictEqual(names, ["ms", "pnpm", "semver"]);
+	});
+
+	// The test above runs from the repo, where node_modules is complete, so it can't notice a file
+	// that .vscodeignore leaves out of the package (2.1.0 shipped without npm-check-updates' index.cjs).
+	test("the file npm-check-updates loads at runtime is in the package", () => {
+		const root = path.resolve(__dirname, "../..");
+		const entry = path.relative(root, require.resolve("npm-check-updates"));
+		const shipped = execFileSync(path.join(root, "node_modules/.bin/vsce"), ["ls"], { cwd: root, encoding: "utf8" }).split("\n");
+		assert.ok(shipped.includes(entry), `${entry} is left out of the package by .vscodeignore`);
 	});
 });
