@@ -1,0 +1,35 @@
+name: Publish
+
+# Publishes to the VS Code Marketplace with Trusted Publishing (OIDC): no stored token.
+# Runs when a GitHub release is published, or manually (Run workflow, choosing the tag).
+on:
+    release:
+        types: [published]
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            id-token: write # lets the job request the OIDC token the Marketplace exchanges
+        steps:
+            - uses: actions/checkout@v7 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - uses: actions/setup-node@v7 # v7.1.0
+              with:
+                  node-version: 22
+
+            # Refuse to publish from a branch, or from a tag that doesn't match package.json.
+            - name: Tag must equal the package version
+              run: test "$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+
+            # vsce is a pinned devDependency; scripts stay off, as in the audited local setup.
+            - run: npm ci --ignore-scripts
+
+            - run: npx --no-install vsce publish --oidc
