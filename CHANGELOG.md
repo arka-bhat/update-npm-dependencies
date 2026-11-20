@@ -4,6 +4,12 @@ All notable changes to the "update-npm-dependencies" extension will be documente
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-11-21
+
+### Fixed
+
+- 2.1.0 failed to start, so every command reported "not found"; a file was missing from the published package
+
 ## [2.1.0] - 2026-11-20
 
 ### Added

@@ -3,7 +3,7 @@
 .github/**
 out/**
 node_modules/**
-!node_modules/npm-check-updates/build/**/*.js
+!node_modules/npm-check-updates/build/index.cjs
 !node_modules/npm-check-updates/package.json
 !node_modules/npm-check-updates/LICENSE
 tasks/**
