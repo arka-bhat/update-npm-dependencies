@@ -7,7 +7,7 @@
 ## Features
 
 - **Auto-detects your package manager** — supports npm, yarn, pnpm, and bun (lockfile-based detection with `packageManager` field fallback)
-- **Color-coded, grouped picker** — outdated packages are sorted by upgrade risk, separated into groups with a "Select all `patch`/`minor`/`major`" toggle at the top of each:
+- **Grouped picker** — outdated packages are sorted by upgrade risk, separated into groups with a "Select all `patch`/`minor`/`major`" toggle at the top of each:
     - Patch — safe, bug fixes
     - Minor — new features, backwards-compatible
     - Major — breaking changes, including `0.x` minor bumps (e.g. `0.3 → 0.4`), which semver treats as breaking
