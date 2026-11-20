@@ -8,9 +8,9 @@
 
 - **Auto-detects your package manager** — supports npm, yarn, pnpm, and bun (lockfile-based detection with `packageManager` field fallback)
 - **Color-coded, grouped picker** — outdated packages are sorted by upgrade risk, separated into groups with a "Select all `patch`/`minor`/`major`" toggle at the top of each:
-    - Patch (green) — safe, bug fixes
-    - Minor (yellow) — new features, backwards-compatible
-    - Major (red) — breaking changes, including `0.x` minor bumps (e.g. `0.3 → 0.4`), which semver treats as breaking
+    - Patch — safe, bug fixes
+    - Minor — new features, backwards-compatible
+    - Major — breaking changes, including `0.x` minor bumps (e.g. `0.3 → 0.4`), which semver treats as breaking
 - **Toolchain updates** — a newer version of the package manager in your `packageManager` field, and newer tools pinned in your project's mise config, are listed in their own **Toolchain** group at the top
 - **Pins and overrides** — exact versions (`"react": "19.2.0"`) go in a separate **Pinned** group so a deliberate pin is only changed on purpose, and packages forced by `overrides` / `resolutions` are listed in a separate **Overridden** group at the end (outside the Select-all toggles), since updating them alone changes nothing. Packages in pnpm's `updateConfig.ignoreDependencies` are never offered, and the picker prompt shows how many ignore rules apply
 - **Link to npm** — the button on each row opens the package's versions page on npm, where its repo and changelog are linked, without closing the picker
@@ -34,14 +34,14 @@
 
 ## Settings
 
-| Setting                              | Default   | Description                                                                                                                                                                                                                                 |
-| ------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Setting                              | Default   | Description                                                                                                                                                                                                                              |
+| ------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `updateDependencies.cooldown`        | _(empty)_ | Skip versions published more recently than this, e.g. `7d`, `12h`, `30m` (a plain number means days). When empty, your package manager's own setting is used: npm `min-release-age`, yarn `npmMinimalAgeGate`, pnpm `minimumReleaseAge`. |
-| `updateDependencies.target`          | `latest`  | `latest` offers every update, `minor` at most minor updates, `patch` patch updates only.                                                                                                                                                    |
-| `updateDependencies.reject`          | `[]`      | Packages never offered for update. Accepts names, wildcards such as `@types/*`, or `/regex/`.                                                                                                                                               |
-| `updateDependencies.peer`            | `false`   | Only offer versions compatible with the peer dependencies of your installed packages.                                                                                                                                                      |
-| `updateDependencies.prerelease`      | `false`   | Also offer pre-release versions (`-alpha`, `-beta`, `-rc`, …). Packages you already use a pre-release of get pre-release updates either way. |
-| `updateDependencies.backgroundCheck` | `true`    | Check in the background on startup and whenever `package.json` changes on disk (including changes made by other tools), for the status bar count and inline hints. Contacts the npm registry.                                                                                                   |
+| `updateDependencies.target`          | `latest`  | `latest` offers every update, `minor` at most minor updates, `patch` patch updates only.                                                                                                                                                 |
+| `updateDependencies.reject`          | `[]`      | Packages never offered for update. Accepts names, wildcards such as `@types/*`, or `/regex/`.                                                                                                                                            |
+| `updateDependencies.peer`            | `false`   | Only offer versions compatible with the peer dependencies of your installed packages.                                                                                                                                                    |
+| `updateDependencies.prerelease`      | `false`   | Also offer pre-release versions (`-alpha`, `-beta`, `-rc`, …). Packages you already use a pre-release of get pre-release updates either way.                                                                                             |
+| `updateDependencies.backgroundCheck` | `true`    | Check in the background on startup and whenever `package.json` changes on disk (including changes made by other tools), for the status bar count and inline hints. Contacts the npm registry.                                            |
 
 A project `.ncurc.json` (the [npm-check-updates](https://github.com/raineorshine/npm-check-updates) config file) is also read, and its options take precedence over these settings.
 
